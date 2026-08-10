@@ -771,13 +771,12 @@ namespace Powerups {
 				if (isFirstPlace && i == POWERUP_STAR) continue;
 				if (isFirstPlace && i == POWERUP_MUSHROOMPACK) continue;
 
-				if (isFirstPlace && i == POWERUP_STAR) continue;
 				if (!isPlayer && i == POWERUP_STAR) {
 					if (playerPlacement != 1) continue;
 					if (!isLastPlace) continue;
 				}
 
-				if (isPlayer && !hasNOS && i == POWERUP_TURBO) continue; // turbo is forced infinite nos for player, catchup for ai
+				if (isPlayer && !hasNOS && i == POWERUP_TURBO) continue; // turbo is forced infinite nos for player, catchup + nos for ai
 
 				// dont reroll the same stuff multiple times
 				if (isResetting && i == POWERUP_INVINCIBLE) continue;
@@ -1093,7 +1092,7 @@ namespace Powerups {
 				time = 9999;
 			}
 
-			if (fTurboTime > 0.0) {
+			if (bIsLocalPlayer && fTurboTime > 0.0) {
 				bForcePlayerNOS = false;
 				fForcePlayerNoNOS = 0.5;
 			}
