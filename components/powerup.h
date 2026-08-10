@@ -648,6 +648,7 @@ namespace Powerups {
 					SM64::bEnemyIsNeutral = true;
 					SM64::bDoReset = true;
 					SM64::vEnemySpawnPosition = pos;
+					fTimeSinceMarioSpawned = 0.0;
 					return true;
 				} break;
 			}
@@ -725,7 +726,7 @@ namespace Powerups {
 			std::vector<int> powerupsAvailable;
 			for (int i = 0; i < NUM_POWERUPS; i++) {
 				if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
-				if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 15.0) continue;
+				if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
 
 				if (isLastPlace && i == POWERUP_PUTTYBOMB) continue;
 				if (isLastPlace && i == POWERUP_CHROMEBALL) continue;
