@@ -1394,7 +1394,6 @@ namespace Powerups {
 			if (obj->sDebugName != "bomb" && obj->sDebugName != "powerup") continue;
 			obj->aModels.clear();
 		}
-		SM64::bEnemyEnabled = false;
 	}
 
 	bool bShouldSpawnPowerups = false;
@@ -1413,6 +1412,7 @@ namespace Powerups {
 				}
 
 				CleanupOldPowerups();
+				SM64::bEnemyEnabled = false;
 				bShouldSpawnPowerups = true;
 
 				for (auto& state : aPowerupStates) {
