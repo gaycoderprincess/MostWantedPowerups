@@ -560,12 +560,7 @@ namespace Powerups {
 					fElectroTime = 15.0;
 					return true;
 				case POWERUP_CLONE: {
-					if (bMK64Style) {
-						SpawnFakePowerupBlock(pUser->mCOMObject->Find<IRigidBody>());
-					}
-					else {
-						ReVoltBomb::SpawnBomb<false>(pUser->mCOMObject->Find<IRigidBody>());
-					}
+					SpawnFakePowerupBlock(pUser->mCOMObject->Find<IRigidBody>());
 					return true;
 				} break;
 				case POWERUP_PUTTYBOMB:
@@ -1223,7 +1218,12 @@ namespace Powerups {
 		}
 
 		void SpawnForAllCheckpoints() {
-			for (int i = 0; i < GRaceStatus::fObj->mCheckpoints.size(); i++) {
+			int count = GRaceStatus::fObj->mCheckpoints.size();
+			auto laps = GetRaceNumLaps();
+			if (IsInNormalRace() && (!laps || *laps <= 1)) {
+				count--; // dont spawn powerups at the finish line
+			}
+			for (int i = 0; i < count; i++) {
 				auto& cp = GRaceStatus::fObj->mCheckpoints[i];
 				auto dir = cp->mDirection;
 				auto pos = cp->mWorldTrigger.fPosRadius;
@@ -1350,7 +1350,8 @@ namespace Powerups {
 			}
 			else {
 				if (bShouldSpawnPowerups) {
-					PowerupBlock::bLightSpawnMode = true;
+					auto laps = GetRaceNumLaps();
+					PowerupBlock::bLightSpawnMode = !laps || *laps <= 1;
 					PowerupBlock::SpawnForAllCheckpoints();
 					bShouldSpawnPowerups = false;
 				}
