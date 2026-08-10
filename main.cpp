@@ -129,13 +129,14 @@ void ChaosLoop() {
 void DebugMenu() {
 	ChloeMenuLib::BeginMenu();
 
+	QuickValueEditor("bDebugPrintsEnabled", bDebugPrintsEnabled);
 	QuickValueEditor("Powerups Style", Powerups::bMK64Style, "Re-Volt", "Mario Kart 64");
 
 	if (DrawMenuOption("Give Powerup")) {
 		ChloeMenuLib::BeginMenu();
 
 		for (int i = 0; i < Powerups::NUM_POWERUPS; i++) {
-			if (DrawMenuOption(std::format("give {}", i))) {
+			if (DrawMenuOption(std::format("give {}", Powerups::aPowerupNames[i]))) {
 				Powerups::RollPowerup(GetLocalPlayerVehicle());
 				Powerups::GetPowerupState(GetLocalPlayerVehicle())->GivePowerup(i);
 			}
@@ -161,6 +162,11 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 
 			for (auto& func : ChloeHook::aHooks) {
 				func();
+			}
+
+			if (std::filesystem::exists("NFSMWPowerups_gcp.toml")) {
+				auto config = toml::parse_file("NFSMWPowerups_gcp.toml");
+				Powerups::bMK64Style = config["style_mk64"].value_or(Powerups::bMK64Style);
 			}
 
 			ChloeMenuLib::RegisterMenu("Cwoee Powerups", &DebugMenu);

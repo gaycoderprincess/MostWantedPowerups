@@ -471,6 +471,24 @@ namespace Powerups {
 		POWERUP_MARIO,
 		NUM_POWERUPS
 	};
+	const char* aPowerupNames[] = {
+		//POWERUP_SHOCKWAVE,
+		"PUTTYBOMB",
+		"FIREWORKPACK",
+		"FIREWORK",
+		//POWERUP_WATERBOMB,
+		"CLONE",
+		//POWERUP_OILSLICK, // todo? copying the relevant collision polys out would work here i think
+		"ELECTROPULSE",
+		"CHROMEBALL",
+		"TURBO",
+		"STAR",
+		"MUSHROOM",
+		"MUSHROOMPACK",
+		"INVINCIBLE",
+		"BEACHBALL",
+		"MARIO",
+	};
 
 	const char* aPowerupSpriteNames1[] = {
 			//"CwoeePowerups/data/textures/revolt_1.png",
@@ -546,6 +564,7 @@ namespace Powerups {
 		double fTimeSinceLastFire = 0.0;
 		double fElectroTime = 0.0;
 		double fTurboTime = 0.0;
+		double aTimeSinceRolled[NUM_POWERUPS] = {};
 
 		// audio
 		NyaAudio::NyaSound electro = 0;
@@ -666,6 +685,11 @@ namespace Powerups {
 		}
 
 		void GivePowerup(int id) {
+			if (!bIsLocalPlayer && bDebugPrintsEnabled) {
+				CwoeeHints::AddHint(std::format("opponent rolled {}", aPowerupNames[id]), 5.0);
+			}
+			aTimeSinceRolled[id] = 0.0;
+
 			PowerupID = id;
 			PowerupCount = (PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL || PowerupID == POWERUP_MUSHROOMPACK) ? 3 : 1;
 			if (bMK64Style) {
@@ -702,11 +726,14 @@ namespace Powerups {
 
 			bool isFirstPlace = false;
 			bool isLastPlace = false;
+			int playerPlacement = -1;
+			int placement = -1;
 			if (GRaceStatus::fObj) {
 				if (auto ply = GRaceStatus::fObj->GetRacerInfo(GetLocalPlayerSimable())) {
-					isPlayerInFirstPlace = ply->mRanking == 1;
+					playerPlacement = ply->mRanking;
 				}
 				if (auto ply = GRaceStatus::fObj->GetRacerInfo(pUser->GetSimable())) {
+					placement = ply->mRanking;
 					isFirstPlace = ply->mRanking == 1;
 					isLastPlace = ply->mRanking == GRaceStatus::fObj->mRacerCount;
 				}
@@ -720,6 +747,8 @@ namespace Powerups {
 
 			std::vector<int> powerupsAvailable;
 			for (int i = 0; i < NUM_POWERUPS; i++) {
+				if (aTimeSinceRolled[i] < 30.0) continue;
+
 				if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
 				if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
 
@@ -734,7 +763,7 @@ namespace Powerups {
 
 				if (isFirstPlace && i == POWERUP_STAR) continue;
 				if (!isPlayer && i == POWERUP_STAR) {
-					if (!isPlayerInFirstPlace) continue;
+					if (playerPlacement != 1) continue;
 					if (!isLastPlace) continue;
 				}
 
@@ -747,7 +776,16 @@ namespace Powerups {
 
 				if (speedKMH >= 290 && (i == POWERUP_MUSHROOM || i == POWERUP_MUSHROOMPACK)) continue; // mushroom sets speed to 300
 
-				powerupsAvailable.push_back(i);
+				int countToAdd = 1;
+				if (i == POWERUP_STAR && !isPlayer && placement == 4 && playerPlacement == 1) {
+					countToAdd = 2;
+				}
+				if (i == POWERUP_TURBO && !isPlayer && playerPlacement == 1) {
+					countToAdd = 3;
+				}
+				for (int j = 0; j < countToAdd; j++) {
+					powerupsAvailable.push_back(j);
+				}
 			}
 			if (powerupsAvailable.empty()) return;
 
@@ -922,6 +960,9 @@ namespace Powerups {
 
 		void Process(double delta) {
 			ProcessLastingEffects(delta);
+			for (auto& time : aTimeSinceRolled) {
+				time += delta;
+			}
 
 			fTimeSinceLastFire += delta;
 
@@ -1028,6 +1069,10 @@ namespace Powerups {
 		}
 
 		void Reset() {
+			for (auto& time : aTimeSinceRolled) {
+				time = 9999;
+			}
+
 			if (fTurboTime > 0.0) {
 				bForcePlayerNOS = false;
 				fForcePlayerNoNOS = 0.5;
@@ -1065,6 +1110,7 @@ namespace Powerups {
 		PowerupState state;
 		state.pUser = veh;
 		state.bIsLocalPlayer = veh == GetLocalPlayerVehicle();
+		state.Reset();
 		state.RollPowerup();
 		aPowerupStates.push_back(state);
 
@@ -1328,6 +1374,7 @@ namespace Powerups {
 			if (obj->sDebugName != "bomb" && obj->sDebugName != "powerup") continue;
 			obj->aModels.clear();
 		}
+		SM64::bEnemyEnabled = false;
 	}
 
 	bool bShouldSpawnPowerups = false;
