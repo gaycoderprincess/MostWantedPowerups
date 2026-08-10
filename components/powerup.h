@@ -644,6 +644,7 @@ namespace Powerups {
 					for (auto& car : cars) {
 						if (car == pUser) continue;
 						if (IsCarDestroyed(car)) continue;
+						if (pUser->GetDriverClass() == DRIVER_COP && car->GetDriverClass() == DRIVER_COP) continue;
 						if (auto rb = car->mCOMObject->Find<IRBVehicle>()) {
 							if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
 						}
@@ -756,17 +757,18 @@ namespace Powerups {
 
 			std::vector<int> powerupsAvailable;
 			if (isCop) {
+				float heatLevel = GetLocalPlayerInterface<IPerpetrator>()->GetHeat();
 				int numCops = GetActiveVehicles(DRIVER_COP).size();
 				for (int i = 0; i < NUM_POWERUPS; i++) {
 					if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
 					if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
 
 					if (i == POWERUP_PUTTYBOMB && numCops <= 3) continue;
-					if (i == POWERUP_CLONE) continue; // todo place clones if a cop is in front of you?
+					if (i == POWERUP_CLONE && ReVoltFirework::PickTarget(GetLocalPlayerVehicle()) != pUser) continue;
 
 					// these two are pretty OP
-					if (i == POWERUP_ELECTROPULSE && !PercentageChanceCheck(25)) continue;
-					if (i == POWERUP_STAR && !PercentageChanceCheck(25)) continue;
+					if (i == POWERUP_ELECTROPULSE && heatLevel < 4.0 && !PercentageChanceCheck(25)) continue;
+					if (i == POWERUP_STAR && heatLevel < 6.0 && !PercentageChanceCheck(25)) continue;
 
 					if (i == POWERUP_MUSHROOM || i == POWERUP_MUSHROOMPACK) continue;
 
@@ -918,6 +920,7 @@ namespace Powerups {
 			auto cars = GetActiveVehicles();
 			for (auto& car : cars) {
 				if (car == pUser) continue;
+				if (pUser->GetDriverClass() == DRIVER_COP && car->GetDriverClass() == DRIVER_COP) continue;
 				//if (IsCarDestroyed(car)) continue;
 				if (auto rb = car->mCOMObject->Find<IRBVehicle>()) {
 					if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
@@ -1127,6 +1130,19 @@ namespace Powerups {
 			fElectroTime = 0.0;
 			fTurboTime = 0.0;
 		}
+
+		void StopSounds() {
+			NyaAudio::Stop(electro);
+			NyaAudio::Stop(electrozap);
+		}
+
+		void DeleteSounds() {
+			if (electro) NyaAudio::Delete(&electro);
+			if (electrozap) NyaAudio::Delete(&electrozap);
+			if (balldrop) NyaAudio::Delete(&balldrop);
+			if (starfire) NyaAudio::Delete(&starfire);
+			if (wbombfire) NyaAudio::Delete(&wbombfire);
+		}
 	};
 	std::vector<PowerupState> aPowerupStates;
 
@@ -1171,6 +1187,7 @@ namespace Powerups {
 	bool DespawnCleanup() {
 		for (auto& state : aPowerupStates) {
 			if (!state.bIsLocalPlayer && !state.IsValid()) {
+				state.DeleteSounds();
 				aPowerupStates.erase(aPowerupStates.begin() + (&state - &aPowerupStates[0]));
 				return true;
 			}
@@ -1301,7 +1318,7 @@ namespace Powerups {
 			else {
 				aObjectsInWorld.push_back(id);
 			}
-			Render3DObjects::aObjects.push_back(new Render3DObjects::Object("powerup", bMK64Style ? models_MK : models_RV, mat, {0,0,0}, 0, BombOnTick<isFake>));
+			Render3DObjects::aObjects.push_back(new Render3DObjects::Object(isFake ? "fakepowerup" : "powerup", bMK64Style ? models_MK : models_RV, mat, {0,0,0}, 0, BombOnTick<isFake>));
 			Render3DObjects::aObjects[id]->bUseAlpha = true;
 			Render3DObjects::aObjects[id]->CustomData = new PowerupBlockData;
 		}
@@ -1376,6 +1393,9 @@ namespace Powerups {
 				bPickupSoundPaused = true;
 				NyaAudio::Stop(gPickupSound);
 			}
+			for (auto& state : aPowerupStates) {
+				state.StopSounds();
+			}
 			return;
 		}
 
@@ -1424,6 +1444,7 @@ namespace Powerups {
 	void PowerupMod_OnTick() {
 		if (TheGameFlowManager.CurrentGameFlowState != GAMEFLOW_STATE_RACING) return;
 		if (IsInLoadingScreen() || IsInNIS()) return;
+		if (FEManager::mPauseRequest) return;
 
 		static double fPursuitPowerupTimer = 0.0;
 		static double fPursuitCopPowerupTimer = 0.0;
@@ -1463,12 +1484,18 @@ namespace Powerups {
 			static CNyaTimer gTimer;
 			gTimer.Process();
 			if (IsInAnyPursuit()) {
+				float heatLevel = GetLocalPlayerInterface<IPerpetrator>()->GetHeat();
+
+				float copPowerupInterval = 10.0;
+				if (heatLevel < 2.0) copPowerupInterval = 15.0;
+				if (heatLevel >= 5.0) copPowerupInterval = 5.0;
+				
 				fPursuitCopPowerupTimer += gTimer.fDeltaTime;
-				if (fPursuitCopPowerupTimer > 10.0) {
+				if (fPursuitCopPowerupTimer > copPowerupInterval) {
 					auto cars = GetActiveVehicles(DRIVER_COP);
 					if (!cars.empty()) {
 						auto car = cars[rand()%cars.size()];
-						if (!IsCarDestroyed(car) && !PlayerHasPowerup(car)) {
+						if (!IsCarDestroyed(car) && !PlayerHasPowerup(car) && !car->GetAIVehiclePtr()->GetRoadBlock()) {
 							RollPowerup(car);
 							fPursuitCopPowerupTimer = 0;
 						}
