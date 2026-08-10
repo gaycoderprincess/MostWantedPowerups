@@ -598,7 +598,7 @@ namespace Powerups {
 					return true;
 				} break;
 				case POWERUP_TURBO:
-					fTurboTime = 10.0;
+					fTurboTime = bIsLocalPlayer ? 10.0 : 20.0;
 					return true;
 				case POWERUP_MUSHROOM:
 				case POWERUP_MUSHROOMPACK:
@@ -686,7 +686,7 @@ namespace Powerups {
 
 		void GivePowerup(int id) {
 			if (!bIsLocalPlayer && bDebugPrintsEnabled) {
-				CwoeeHints::AddHint(std::format("opponent rolled {}", aPowerupNames[id]), 5.0);
+				CwoeeHints::AddHint(std::format("opponent rolled {} after {:.2f}", aPowerupNames[id], aTimeSinceRolled[id]), 5.0);
 			}
 			aTimeSinceRolled[id] = 0.0;
 
@@ -710,6 +710,22 @@ namespace Powerups {
 			}
 		}
 
+		int GetRacePlacement() {
+			if (!GRaceStatus::fObj) return -1;
+			if (auto ply = GRaceStatus::fObj->GetRacerInfo(pUser->GetSimable())) {
+				return ply->mRanking;
+			}
+			return -1;
+		}
+
+		int GetPlayerRacePlacement() {
+			if (!GRaceStatus::fObj) return -1;
+			if (auto ply = GRaceStatus::fObj->GetRacerInfo(GetLocalPlayerSimable())) {
+				return ply->mRanking;
+			}
+			return -1;
+		}
+
 		void RollPowerup() {
 			bool isPlayer = pUser->GetDriverClass() == DRIVER_HUMAN;
 			bool hasNOS = false;
@@ -726,17 +742,11 @@ namespace Powerups {
 
 			bool isFirstPlace = false;
 			bool isLastPlace = false;
-			int playerPlacement = -1;
-			int placement = -1;
+			int playerPlacement = GetPlayerRacePlacement();
+			int placement = GetRacePlacement();
 			if (GRaceStatus::fObj) {
-				if (auto ply = GRaceStatus::fObj->GetRacerInfo(GetLocalPlayerSimable())) {
-					playerPlacement = ply->mRanking;
-				}
-				if (auto ply = GRaceStatus::fObj->GetRacerInfo(pUser->GetSimable())) {
-					placement = ply->mRanking;
-					isFirstPlace = ply->mRanking == 1;
-					isLastPlace = ply->mRanking == GRaceStatus::fObj->mRacerCount;
-				}
+				isFirstPlace = placement == 1;
+				isLastPlace = placement == GRaceStatus::fObj->mRacerCount;
 			}
 			if (isFirstPlace && isLastPlace) {
 				isFirstPlace = false;
@@ -747,7 +757,7 @@ namespace Powerups {
 
 			std::vector<int> powerupsAvailable;
 			for (int i = 0; i < NUM_POWERUPS; i++) {
-				if (aTimeSinceRolled[i] < 30.0) continue;
+				if (aTimeSinceRolled[i] < 20.0) continue;
 
 				if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
 				if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
@@ -777,14 +787,14 @@ namespace Powerups {
 				if (speedKMH >= 290 && (i == POWERUP_MUSHROOM || i == POWERUP_MUSHROOMPACK)) continue; // mushroom sets speed to 300
 
 				int countToAdd = 1;
-				if (i == POWERUP_STAR && !isPlayer && placement == 4 && playerPlacement == 1) {
+				if (i == POWERUP_STAR && !isPlayer && placement >= 4 && playerPlacement == 1) {
 					countToAdd = 2;
 				}
 				if (i == POWERUP_TURBO && !isPlayer && playerPlacement == 1) {
 					countToAdd = 3;
 				}
 				for (int j = 0; j < countToAdd; j++) {
-					powerupsAvailable.push_back(j);
+					powerupsAvailable.push_back(i);
 				}
 			}
 			if (powerupsAvailable.empty()) return;
@@ -869,7 +879,14 @@ namespace Powerups {
 				return ReVoltFirework::PickTargetAI(pUser) != nullptr;
 			}
 			if (PowerupID == POWERUP_MUSHROOM || PowerupID == POWERUP_MUSHROOMPACK) {
+				if (fTimeSinceLastFire < 1.0) return false;
+
 				return GetLocalPlayerInterface<IInput>()->GetControls()->fGas >= 0.95;
+			}
+			if (PowerupID == POWERUP_ELECTROPULSE) {
+				if (!GetZappedCars().empty()) return true; // use pulse if cars are nearby
+				if (GetPlayerRacePlacement() == 1) return true; // immediately use pulse if player is in first so we don't hoard it
+				return false;
 			}
 			return true;
 		}
@@ -899,13 +916,15 @@ namespace Powerups {
 
 		void ProcessLastingEffects(double delta) {
 			if (fTurboTime > 0.0) {
+				fTurboTime -= delta;
+
+				if (auto ply = pUser->mCOMObject->Find<IEngine>()) {
+					ply->ChargeNOS(1.0);
+				}
+
 				if (bIsLocalPlayer) {
 					bForcePlayerNOS = true;
-					if (auto ply = GetLocalPlayerInterface<IEngine>()) {
-						ply->ChargeNOS(1.0);
-					}
 
-					fTurboTime -= delta;
 					if (fTurboTime <= 0.0) {
 						bForcePlayerNOS = false;
 						fForcePlayerNoNOS = 0.5;
@@ -913,6 +932,7 @@ namespace Powerups {
 				}
 				else {
 					aCatchupCheatCars.push_back(pUser);
+					aForceNOSCars.push_back(pUser);
 				}
 			}
 			if (fElectroTime > 0.0) {
@@ -1324,6 +1344,7 @@ namespace Powerups {
 
 	void OnTick() {
 		aCatchupCheatCars.clear();
+		aForceNOSCars.clear();
 
 		while (DespawnCleanup()) {}
 
@@ -1387,6 +1408,11 @@ namespace Powerups {
 			fPursuitPowerupTimer = 0.0;
 
 			if (IsLocalPlayerStaging()) {
+				// no starting nos
+				if (auto ply = GetLocalPlayerInterface<IEngine>()) {
+					ply->ChargeNOS(-1);
+				}
+
 				CleanupOldPowerups();
 				bShouldSpawnPowerups = true;
 
