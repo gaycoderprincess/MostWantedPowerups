@@ -8,7 +8,7 @@ namespace Powerups {
 
 	double fTimeSinceMarioSpawned = 0.0;
 
-	void PlayAudioFromCar(NyaAudio::NyaSound sound, IRigidBody* veh) {
+	void PlayAudioFromCar(NyaAudio::NyaSound sound, IRigidBody* veh, bool mk64Volume = false) {
 		if (!sound) return;
 
 		float volume = 1.0;
@@ -22,13 +22,13 @@ namespace Powerups {
 		}
 
 		if (volume <= 0.0) return;
-		NyaAudio::SetVolume(sound, volume * GetSFXVolume() * sfxVolumeMultiplier);
+		NyaAudio::SetVolume(sound, volume * GetSFXVolume() * (mk64Volume ? sfxVolumeMultiplierMK64 : sfxVolumeMultiplier));
 		NyaAudio::SkipTo(sound, 0, false);
 		NyaAudio::Play(sound);
 	}
 
-	void PlayAudioFromCar(NyaAudio::NyaSound sound, IVehicle* veh) {
-		return PlayAudioFromCar(sound, veh->mCOMObject->Find<IRigidBody>());
+	void PlayAudioFromCar(NyaAudio::NyaSound sound, IVehicle* veh, bool mk64Volume = false) {
+		return PlayAudioFromCar(sound, veh->mCOMObject->Find<IRigidBody>(), mk64Volume);
 	}
 
 	namespace ReVoltBomb {
@@ -572,11 +572,12 @@ namespace Powerups {
 		NyaAudio::NyaSound balldrop = 0;
 		NyaAudio::NyaSound starfire = 0;
 		NyaAudio::NyaSound wbombfire = 0;
+		NyaAudio::NyaSound mushroom = 0;
 
 		bool ExecutePowerup() {
 			switch (PowerupID) {
 				case POWERUP_ELECTROPULSE:
-					fElectroTime = 15.0;
+					fElectroTime = pUser->GetDriverClass() == DRIVER_COP ? 7.0 : 15.0;
 					return true;
 				case POWERUP_CLONE: {
 					SpawnFakePowerupBlock(pUser->mCOMObject->Find<IRigidBody>());
@@ -604,6 +605,9 @@ namespace Powerups {
 				case POWERUP_MUSHROOMPACK:
 				{
 					pUser->SetSpeed(pUser->GetAIVehiclePtr()->GetTopSpeed());
+
+					if (!mushroom) mushroom = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/mushroom.mp3");
+					PlayAudioFromCar(mushroom, pUser, true);
 					return true;
 				} break;
 				case POWERUP_INVINCIBLE: {
@@ -686,15 +690,17 @@ namespace Powerups {
 		}
 
 		void GivePowerup(int id) {
+			bool isCop = pUser->GetDriverClass() == DRIVER_COP;
+
 			if (!bIsLocalPlayer && bDebugPrintsEnabled) {
-				CwoeeHints::AddHint(std::format("opponent rolled {} after {:.2f}", aPowerupNames[id], aTimeSinceRolled[id]), 5.0);
+				CwoeeHints::AddHint(std::format("{} rolled {} after {:.2f}", pUser->GetVehicleName(), aPowerupNames[id], aTimeSinceRolled[id]), 5.0);
 			}
 			aTimeSinceRolled[id] = 0.0;
 
 			PowerupID = id;
 			PowerupCount = (PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL || PowerupID == POWERUP_MUSHROOMPACK) ? 3 : 1;
 			if (bMK64Style) {
-				fRollTime = 5.0;
+				fRollTime = isCop ? 2.0 : 5.0;
 
 				if (!bIsLocalPlayer) return;
 
@@ -704,7 +710,7 @@ namespace Powerups {
 				NyaAudio::Play(gPickupSound);
 			}
 			else {
-				fRollTime = 4.0;
+				fRollTime = isCop ? 2.0 : 4.0;
 
 				static auto sound = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/pickup.wav");
 				PlayAudioFromCar(sound, pUser);
@@ -713,6 +719,7 @@ namespace Powerups {
 
 		int GetRacePlacement() {
 			if (!GRaceStatus::fObj) return -1;
+			if (IsInPursuitRace()) return -1;
 			if (auto ply = GRaceStatus::fObj->GetRacerInfo(pUser->GetSimable())) {
 				return ply->mRanking;
 			}
@@ -721,6 +728,7 @@ namespace Powerups {
 
 		int GetPlayerRacePlacement() {
 			if (!GRaceStatus::fObj) return -1;
+			if (IsInPursuitRace()) return -1;
 			if (auto ply = GRaceStatus::fObj->GetRacerInfo(GetLocalPlayerSimable())) {
 				return ply->mRanking;
 			}
@@ -746,7 +754,7 @@ namespace Powerups {
 			bool isLastPlace = false;
 			int playerPlacement = GetPlayerRacePlacement();
 			int placement = GetRacePlacement();
-			if (GRaceStatus::fObj) {
+			if (IsInNormalRace()) {
 				isFirstPlace = placement == 1;
 				isLastPlace = placement == GRaceStatus::fObj->mRacerCount;
 			}
@@ -760,6 +768,8 @@ namespace Powerups {
 				float heatLevel = GetLocalPlayerInterface<IPerpetrator>()->GetHeat();
 				int numCops = GetActiveVehicles(DRIVER_COP).size();
 				for (int i = 0; i < NUM_POWERUPS; i++) {
+					if (aTimeSinceRolled[i] < 20.0) continue;
+
 					if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
 					if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
 
@@ -767,7 +777,9 @@ namespace Powerups {
 					if (i == POWERUP_CLONE && ReVoltFirework::PickTarget(GetLocalPlayerVehicle()) != pUser) continue;
 
 					// these two are pretty OP
-					if (i == POWERUP_ELECTROPULSE && heatLevel < 4.0 && !PercentageChanceCheck(25)) continue;
+					if (i == POWERUP_ELECTROPULSE && heatLevel < 3.0) continue;
+					if (i == POWERUP_STAR && heatLevel < 2.0) continue;
+					if (i == POWERUP_ELECTROPULSE && heatLevel < 6.0 && !PercentageChanceCheck(25)) continue;
 					if (i == POWERUP_STAR && heatLevel < 6.0 && !PercentageChanceCheck(25)) continue;
 
 					if (i == POWERUP_MUSHROOM || i == POWERUP_MUSHROOMPACK) continue;
@@ -908,6 +920,7 @@ namespace Powerups {
 			if (PowerupID == POWERUP_ELECTROPULSE) {
 				if (!GetZappedCars().empty()) return true; // use pulse if cars are nearby
 				if (GetPlayerRacePlacement() == 1) return true; // immediately use pulse if player is in first so we don't hoard it
+				if (pUser->GetDriverClass() == DRIVER_COP) return true; // immediately use if cop, otherwise this is way too OP
 				return false;
 			}
 			return true;
@@ -1404,13 +1417,17 @@ namespace Powerups {
 			bPickupSoundPaused = false;
 		}
 
+		if (Sim::Internal::mSystem->mSpeed < 1.0 && !NyaAudio::IsFinishedPlaying(gPickupSound)) {
+			NyaAudio::Stop(gPickupSound);
+		}
+
 		static CNyaTimer gTimer;
 		gTimer.Process();
-		fTimeSinceMarioSpawned += gTimer.fDeltaTime;
+		fTimeSinceMarioSpawned += gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed;
 
 		for (auto& state : aPowerupStates) {
 			if (!state.IsValid()) continue;
-			state.Process(gTimer.fDeltaTime);
+			state.Process(gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed);
 		}
 
 		auto powerup = GetPowerupState(GetLocalPlayerVehicle());
@@ -1488,21 +1505,21 @@ namespace Powerups {
 
 				float copPowerupInterval = 10.0;
 				if (heatLevel < 2.0) copPowerupInterval = 15.0;
-				if (heatLevel >= 5.0) copPowerupInterval = 5.0;
-				
-				fPursuitCopPowerupTimer += gTimer.fDeltaTime;
+				if (heatLevel >= 5.0) copPowerupInterval = 6.0;
+
+				fPursuitCopPowerupTimer += gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed;
 				if (fPursuitCopPowerupTimer > copPowerupInterval) {
 					auto cars = GetActiveVehicles(DRIVER_COP);
 					if (!cars.empty()) {
 						auto car = cars[rand()%cars.size()];
-						if (!IsCarDestroyed(car) && !PlayerHasPowerup(car) && !car->GetAIVehiclePtr()->GetRoadBlock()) {
+						if (!IsCarDestroyed(car) && strcmp(car->GetVehicleName(), "copheli") && !PlayerHasPowerup(car) && !car->GetAIVehiclePtr()->GetRoadBlock()) {
 							RollPowerup(car);
 							fPursuitCopPowerupTimer = 0;
 						}
 					}
 				}
 				if (!PlayerHasPowerup(GetLocalPlayerVehicle())) {
-					fPursuitPowerupTimer += gTimer.fDeltaTime;
+					fPursuitPowerupTimer += gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed;
 					if (fPursuitPowerupTimer > 30.0) {
 						RollPowerup(GetLocalPlayerVehicle());
 						fPursuitPowerupTimer = 0;
@@ -1516,5 +1533,6 @@ namespace Powerups {
 		aDrawingLoopFunctions.push_back(OnTick);
 		aDrawingLoopFunctions.push_back(PowerupMod_OnTick);
 		aDrawing3DLoopFunctions.push_back(OnTick3D);
+		NyaHookLib::Patch<uint16_t>(0x6B1A02, 0x9090); // disable player causality check for cop flipping
 	});
 }
