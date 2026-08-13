@@ -3,6 +3,8 @@ namespace Powerups {
 	NyaAudio::NyaSound gPickupSound = 0;
 	bool bPickupSoundPaused = false;
 
+	bool bOverheadDisplay = true;
+
 	float sfxVolumeMultiplier = 0.33;
 	float sfxVolumeMultiplierMK64 = 1.0;
 
@@ -980,30 +982,16 @@ namespace Powerups {
 			return PowerupID != NUM_POWERUPS && PowerupCount > 0;
 		}
 
-		void Render() {
-			static auto texBase1 = LoadTexture_SetDir("CwoeePowerups/data/textures/revolt_base.png");
-			static auto texBase2 = LoadTexture_SetDir("CwoeePowerups/data/textures/mk64_base.png");
-			auto texBase = bMK64Style ? texBase2 : texBase1;
-			if (texBase) {
-				DrawRectangle(0.5 - (fSpriteSize * GetAspectRatioInv()), 0.5 + (fSpriteSize * GetAspectRatioInv()), fSpriteY - fSpriteSize, fSpriteY + fSpriteSize, {255,255,255,255}, 0, texBase);
-			}
+		int GetPowerupWithRoll() {
+			if (!HasPowerup()) return NUM_POWERUPS;
 
 			int powerupId = PowerupID;
 			uint8_t powerupAlpha = 255;
 			if (fRollTime > 0) {
 				if (bMK64Style) {
-					if (fRollTime < 1) {
-						powerupAlpha = 255;
-						if (fRollTime < 0.166 * 5) powerupAlpha = 0;
-						if (fRollTime < 0.166 * 4) powerupAlpha = 255;
-						if (fRollTime < 0.166 * 3) powerupAlpha = 0;
-						if (fRollTime < 0.166 * 2) powerupAlpha = 255;
-						if (fRollTime < 0.166 * 1) powerupAlpha = 0;
-					}
-					else {
+					if (fRollTime >= 1) {
 						powerupId = fRollTime * 20;
 						powerupId %= NUM_POWERUPS;
-						powerupAlpha = 127;
 					}
 				}
 				else {
@@ -1016,10 +1004,59 @@ namespace Powerups {
 						powerupId = PowerupID + ((fRollTime - 0.75) * scroll);
 						powerupId %= NUM_POWERUPS;
 					}
+				}
+			}
+			return powerupId;
+		}
+
+		uint8_t GetPowerupAlpha() {
+			uint8_t powerupAlpha = 255;
+			if (fRollTime > 0) {
+				if (bMK64Style) {
+					if (fRollTime < 1) {
+						powerupAlpha = 255;
+						if (fRollTime < 0.166 * 5) powerupAlpha = 0;
+						if (fRollTime < 0.166 * 4) powerupAlpha = 255;
+						if (fRollTime < 0.166 * 3) powerupAlpha = 0;
+						if (fRollTime < 0.166 * 2) powerupAlpha = 255;
+						if (fRollTime < 0.166 * 1) powerupAlpha = 0;
+					}
+					else {
+						powerupAlpha = 127;
+					}
+				}
+				else {
 					powerupAlpha = 127;
 				}
 			}
-			else {
+			return powerupAlpha;
+		}
+
+		IDirect3DTexture9* GetPowerupTexture(int powerupId) {
+			if (powerupId == NUM_POWERUPS) return nullptr;
+
+			auto& tex = bMK64Style ? aPowerupTextures2[powerupId] : aPowerupTextures1[powerupId];
+			if (!tex) {
+				tex = LoadTexture_SetDir(bMK64Style ? aPowerupSpriteNames2[powerupId] : aPowerupSpriteNames1[powerupId]);
+			}
+
+			return tex;
+		}
+
+		IDirect3DTexture9* GetBaseTexture() {
+			static auto texBase1 = LoadTexture_SetDir("CwoeePowerups/data/textures/revolt_base.png");
+			static auto texBase2 = LoadTexture_SetDir("CwoeePowerups/data/textures/mk64_base.png");
+			return bMK64Style ? texBase2 : texBase1;
+		}
+
+		void Render() {
+			if (auto texBase = GetBaseTexture()) {
+				DrawRectangle(0.5 - (fSpriteSize * GetAspectRatioInv()), 0.5 + (fSpriteSize * GetAspectRatioInv()), fSpriteY - fSpriteSize, fSpriteY + fSpriteSize, {255,255,255,255}, 0, texBase);
+			}
+
+			int powerupId = GetPowerupWithRoll();
+			uint8_t powerupAlpha = GetPowerupAlpha();
+			if (fRollTime <= 0) {
 				if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK) {
 					static bool bOnce = true;
 					if (bOnce) {
@@ -1030,12 +1067,7 @@ namespace Powerups {
 				}
 			}
 
-			auto& tex = bMK64Style ? aPowerupTextures2[powerupId] : aPowerupTextures1[powerupId];
-			if (!tex) {
-				tex = LoadTexture_SetDir(bMK64Style ? aPowerupSpriteNames2[powerupId] : aPowerupSpriteNames1[powerupId]);
-			}
-
-			if (tex) {
+			if (auto tex = GetPowerupTexture(powerupId)) {
 				DrawRectangle(0.5 - (fSpriteSize * GetAspectRatioInv()), 0.5 + (fSpriteSize * GetAspectRatioInv()), fSpriteY - fSpriteSize, fSpriteY + fSpriteSize, {255,255,255,powerupAlpha}, 0, tex);
 			}
 		}
@@ -1051,9 +1083,14 @@ namespace Powerups {
 			if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL) {
 				if (fTimeSinceLastFire < 0.5) return false;
 				auto target = ReVoltFirework::PickTargetAI(pUser);
+				if (target && pUser->GetDriverClass() == DRIVER_COP) {
+					// prevent cop friendly fire
+					if (target->GetDriverClass() != DRIVER_HUMAN) return false;
 
-				// prevent cop friendly fire
-				if (target && pUser->GetDriverClass() == DRIVER_COP && target->GetDriverClass() != DRIVER_HUMAN) return false;
+					// prevent cops killing themselves
+					if ((*target->GetPosition() - *pUser->GetPosition()).length() < 10) return false;
+				}
+
 				return target != nullptr;
 			}
 			if (PowerupID == POWERUP_MUSHROOM || PowerupID == POWERUP_MUSHROOMPACK) {
@@ -1245,7 +1282,46 @@ namespace Powerups {
 			}
 		}
 
+		void RenderOverhead(IDirect3DTexture9* tex, float scaleX, float scaleY, float zOffset) {
+			static auto models = Render3D::CreateModels("plane2d.fbx");
+
+			Render3D::RendererConfig.pOverrideDiffuse = tex;
+			Render3D::RendererConfig.bForceNoCulling = true;
+
+			if (auto rb = pUser->mCOMObject->Find<ICollisionBody>()) {
+				UMath::Vector3 dim;
+				rb->GetDimension(&dim);
+
+				UMath::Matrix4 mat = *rb->GetMatrix4();
+				mat.p = *rb->GetPosition();
+
+				mat.p += mat.y * dim.y;
+				mat.p += mat.y * scaleY;
+
+				mat.x *= scaleX;
+				mat.z *= scaleY;
+
+				mat.p += mat.z * zOffset;
+
+				for (auto& mdl : models) {
+					mdl->RenderAt(WorldToRenderMatrix(mat), true);
+				}
+			}
+
+			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
+			Render3D::RendererConfig.bForceNoCulling = false;
+		}
+
 		void Process3D() {
+			if (!bIsLocalPlayer && bOverheadDisplay) {
+				if (auto tex = GetPowerupTexture(GetPowerupWithRoll())) {
+					RenderOverhead(GetBaseTexture(), 1.0, 1.0, 0.0);
+					if (GetPowerupAlpha() > 64) {
+						RenderOverhead(tex, 1.0, 1.0, -0.05);
+					}
+				}
+			}
+
 			if (fElectroTime > 0.0) {
 				RenderZappingCar(pUser);
 
@@ -1615,8 +1691,10 @@ namespace Powerups {
 
 			if (IsLocalPlayerStaging()) {
 				// no starting nos
-				if (auto ply = GetLocalPlayerInterface<IEngine>()) {
-					ply->ChargeNOS(-1);
+				if (!IsInDragRace()) {
+					if (auto ply = GetLocalPlayerInterface<IEngine>()) {
+						ply->ChargeNOS(-1);
+					}
 				}
 
 				CleanupOldPowerups();
@@ -1645,6 +1723,15 @@ namespace Powerups {
 			static CNyaTimer gTimer;
 			gTimer.Process();
 			if (IsInAnyPursuit()) {
+				// minimum heat 3
+				if (auto ply = GetLocalPlayerInterface<IPerpetrator>()) {
+					if (auto max = GetMaxHeat()) {
+						if (*max >= 3.0 && ply->GetHeat() < 3.0) {
+							ply->SetHeat(3.0);
+						}
+					}
+				}
+
 				float heatLevel = GetLocalPlayerInterface<IPerpetrator>()->GetHeat();
 
 				float copPowerupInterval = 10.0;

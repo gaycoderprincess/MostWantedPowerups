@@ -130,6 +130,7 @@ void DebugMenu() {
 	ChloeMenuLib::BeginMenu();
 
 	QuickValueEditor("bDebugPrintsEnabled", bDebugPrintsEnabled);
+	QuickValueEditor("Overhead Display", Powerups::bOverheadDisplay);
 	QuickValueEditor("Powerups Style", Powerups::bMK64Style, "Re-Volt", "Mario Kart 64");
 
 	if (DrawMenuOption("Give Powerup")) {
