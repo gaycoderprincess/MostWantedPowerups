@@ -445,7 +445,6 @@ public:
 	IRigidBody* pGameObject;
 	CustomPhysicsObjects::CustomPhysicsObject* pCustomObject;
 	Render3DObjects::Object* pCustomStaticObject;
-	bool bIsBall = false;
 
 	CwoeeSharedRigidBody() {
 		pGameObject = nullptr;
@@ -453,13 +452,10 @@ public:
 		pCustomStaticObject = nullptr;
 	}
 	CwoeeSharedRigidBody(IRigidBody* obj) : pGameObject(obj) {}
-	CwoeeSharedRigidBody(CustomPhysicsObjects::CustomPhysicsObject* obj) : pCustomObject(obj) {
-		bIsBall = CustomPhysicsBall::bEnabled && obj && B3_ID_EQUALS(obj->nB3Body, CustomPhysicsBall::BallBody);
-	}
+	CwoeeSharedRigidBody(CustomPhysicsObjects::CustomPhysicsObject* obj) : pCustomObject(obj) {}
 	CwoeeSharedRigidBody(Render3DObjects::Object* obj) : pCustomStaticObject(obj) {}
 
 	bool IsValid() {
-		if (bIsBall) return CustomPhysicsBall::bEnabled;
 		if (pGameObject && IsRigidBodyValidAndActive(pGameObject)) return true;
 		if (pCustomObject) {
 			for (auto& obj : CustomPhysicsObjects::aPhysicsObjects) {
@@ -596,11 +592,6 @@ std::vector<CwoeeSharedRigidBody> GetActiveSharedRigidBodies(bool includeStaticO
 	auto cwoee = CustomPhysicsObjects::aPhysicsObjects;
 	for (auto& rb : cwoee) {
 		out.push_back(rb);
-	}
-	if (CustomPhysicsBall::bEnabled) {
-		static auto obj = new CustomPhysicsObjects::CustomPhysicsObject;
-		obj->nB3Body = CustomPhysicsBall::BallBody;
-		out.push_back(obj);
 	}
 	if (includeStaticObjects) {
 		auto render3d = Render3DObjects::aObjects;

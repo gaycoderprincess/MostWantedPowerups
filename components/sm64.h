@@ -214,12 +214,12 @@ namespace SM64 {
 		mat.SetIdentity();
 		if (textured) {
 			static auto marioTextured = LoadTexture_SetDir("CwoeePowerups/data/models/letsago.png");
-			tmpModel.pTexture = marioTextured;
+			tmpModel.pTextureDiffuse = marioTextured;
 			tmpModel.RenderAt(WorldToRenderMatrix(mat), true);
 		}
 		else {
 			static auto marioColored = LoadTexture_SetDir("CwoeePowerups/data/models/letsago_white.png");
-			tmpModel.pTexture = marioColored;
+			tmpModel.pTextureDiffuse = marioColored;
 			tmpModel.RenderAt(WorldToRenderMatrix(mat), false);
 		}
 	}
@@ -419,8 +419,9 @@ namespace SM64 {
 		PerformanceBenchmarker _perf("UpdateMarioCollision");
 
 		for (auto& obj : aCollisionObjects) {
+			int i = &obj - &aCollisionObjects[0];
 			for (auto& inst : obj.aInstances) {
-				if (inst.pInstance->IsActive() && inst.IsInAABB()) {
+				if ((inst.pInstance->IsActive() && inst.IsInAABB()) || i == COLLISIONARTICLE_CUSTOM) {
 					//if (!inst.NeedsUpdating()) continue;
 					AddLogPopup(std::format("Updating {:X}", (uintptr_t)inst.pInstance));
 					inst.Create();
@@ -507,187 +508,69 @@ namespace SM64 {
 		NyaHookLib::Patch<uint16_t>(0x6B1A02, 0x0974);
 	}
 
-	void MarioInteract_KnockAway(IRigidBody* body) {
+	void MarioInteract_KnockAway(CwoeeSharedRigidBody* body) {
 		UMath::Vector3 marioPos = GetMarioWorldPos();
-		auto objPos = *body->GetPosition();
+		auto objPos = body->GetPosition();
 
 		UMath::Vector3 dir = (objPos - marioPos);
 		dir.Normalize();
 
 		dir *= 15;
 
-		body->SetLinearVelocity(&dir);
+		body->SetLinearVelocity(dir);
 	}
 
-	template<typename T>
-	void MarioInteract_KnockFwd(T* body) {
+	void MarioInteract_KnockFwd(CwoeeSharedRigidBody* body) {
 		UMath::Vector3 dir = GetMarioWorldFacing();
 		dir *= 25;
 		dir.y = 5;
-		body->SetLinearVelocity(&dir);
+		body->SetLinearVelocity(dir);
 
 		dir *= 0.15;
-		body->SetAngularVelocity(&dir);
+		body->SetAngularVelocity(dir);
 	}
 
-	bool IsCustomObjectKillable(const Render3DObjects::Object& obj) {
-		if (obj.sDebugName == "vergil") return true;
-		if (obj.sDebugName == "scientist") return true;
+	bool IsCustomObjectInstaKillable(const Render3DObjects::Object* obj) {
+		if (obj->sDebugName == "teddie") return true;
+		if (obj->sDebugName == "vergil") return true;
+		if (obj->sDebugName == "scientist") return true;
 		return false;
 	}
 
-	bool IsCustomObjectPunchKillable(const Render3DObjects::Object& obj) {
-		if (obj.sDebugName == "scientist") return true;
-		return false;
-	}
-
-	void KillCustomObject(Render3DObjects::Object& obj) {
-		if (obj.sDebugName == "vergil") { // teleport vergil, cant remove his music from here
-			obj.vColPosition = obj.mMatrix.p = {0,-100,0};
-		}
-		else {
-			obj.aModels.clear();
-		}
-	}
-
-	void MarioCustomObjectInteractions() {
-		UMath::Vector3 marioPos = GetMarioWorldPos();
-
-		for (auto& obj : Render3DObjects::aObjects) {
-			if (!obj->IsActive()) continue;
-
-			auto& car = *obj;
-			if (car.fColSize <= 0.0) continue;
-
-			float dimY = car.fColSize;
-
-			const float fAttackRange = 6.0 * GetMarioScale();
-			const float fJumpAttackRange = 2.5 * GetMarioScale();
-
-			float dist = (car.vColPosition - marioPos).length();
-			if (dist < fAttackRange) {
-				auto pos = WorldToMario(car.vColPosition);
-				auto interaction = sm64_fake_determine_interaction(marioId, pos.x, pos.y, pos.z);
-
-				// ground pound is an instakill
-				if (interaction == INT_GROUND_POUND_OR_TWIRL) {
-					if (dist < fJumpAttackRange && marioState.velocity[1] < -50.0f && IsCustomObjectKillable(car)) { // only kill while moving downwards
-						KillCustomObject(car);
-						sm64_play_sound_global(SOUND_GENERAL_BREAK_BOX);
-					}
-				}
-				// bounce off if needed
-				else if (interaction == INT_HIT_FROM_ABOVE || interaction == INT_HIT_FROM_BELOW) {
-					if (dist < fJumpAttackRange) {
-						sm64_mario_attack(marioId, pos.x, pos.y, pos.z, dimY * marioScalar);
-					}
-				}
-				// punches & kicks throw forward
-				else if (interaction == INT_PUNCH || interaction == INT_KICK) {
-					if (IsCustomObjectPunchKillable(car)) {
-						KillCustomObject(car);
-					}
-
-					// bounce_back_from_attack
-
-					if (marioState.action == ACT_PUNCHING) {
-						sm64_set_mario_action(marioId, ACT_MOVE_PUNCHING);
-					}
-
-					if (marioState.action & ACT_FLAG_AIR) {
-						sm64_set_mario_forward_velocity(marioId, -16.0f);
-					} else {
-						sm64_set_mario_forward_velocity(marioId, -48.0f);
-					}
-
-					sm64_play_sound_global(SOUND_ACTION_HIT_2);
-				}
-				// all else throws away
-				//else if (interaction) {
-				//	MarioInteract_KnockAway(rb);
-				//}
-			}
-		}
-	}
-
-	void MarioCustomPhysicsObjectInteractions() {
-		UMath::Vector3 marioPos = GetMarioWorldPos();
-
-		auto objs = CustomPhysicsObjects::aPhysicsObjects;
-		for (auto& pObj : objs) {
-			auto& rb = *pObj;
-			auto dim = rb.vModelSize;
-
-			const float fAttackRange = 6.0 * GetMarioScale();
-			const float fJumpAttackRange = 2.5 * GetMarioScale();
-
-			float dist = (rb.GetPosition() - marioPos).length();
-			if (dist < fAttackRange) {
-				auto pos = WorldToMario(rb.GetPosition());
-				auto interaction = sm64_fake_determine_interaction(marioId, pos.x, pos.y, pos.z);
-
-				// ground pound is an instakill
-				if (interaction == INT_GROUND_POUND_OR_TWIRL) {
-					// todo
-				}
-				// bounce off if needed
-				else if (interaction == INT_HIT_FROM_ABOVE || interaction == INT_HIT_FROM_BELOW) {
-					if (dist < fJumpAttackRange) {
-						sm64_mario_attack(marioId, pos.x, pos.y, pos.z, dim.y * marioScalar);
-					}
-				}
-				// punches & kicks throw forward
-				else if (interaction == INT_PUNCH || interaction == INT_KICK) {
-					MarioInteract_KnockFwd(&rb);
-
-					// bounce_back_from_attack
-
-					if (marioState.action == ACT_PUNCHING) {
-						sm64_set_mario_action(marioId, ACT_MOVE_PUNCHING);
-					}
-
-					if (marioState.action & ACT_FLAG_AIR) {
-						sm64_set_mario_forward_velocity(marioId, -16.0f);
-					} else {
-						sm64_set_mario_forward_velocity(marioId, -48.0f);
-					}
-
-					sm64_play_sound_global(SOUND_ACTION_HIT_2);
-				}
-				// all else throws away
-				//else if (interaction) {
-				//	MarioInteract_KnockAway(rb);
-				//}
-			}
-		}
+	void DamageCustomObject(Render3DObjects::Object* obj, float damage) {
+		obj->fHealth -= damage;
 	}
 
 	void MarioObjectInteractions() {
 		UMath::Vector3 marioPos = GetMarioWorldPos();
 
-		auto cars = GetActiveVehicles();
-		for (auto& car : cars) {
-			if (!bEnemyEnabled && car == GetLocalPlayerVehicle()) continue;
+		auto objs = GetActiveSharedRigidBodies(true);
+		for (auto& obj : objs) {
+			if (obj.HasBakedCollisionMesh()) continue;
+			if (!bEnemyEnabled && obj.GetVehicle() == GetLocalPlayerVehicle()) continue;
 
-			auto rb = car->GetSimable()->GetRigidBody();
-			if (!rb) continue;
-
-			UMath::Vector3 dim;
-			rb->GetDimension(&dim);
+			auto dim = obj.GetDimension();
 
 			const float fAttackRange = 6.0 * GetMarioScale();
 			const float fJumpAttackRange = 2.5 * GetMarioScale();
 
-			float dist = (*car->GetPosition() - marioPos).length();
+			float dist = (obj.GetPosition() - marioPos).length();
 			if (dist < fAttackRange) {
-				auto pos = WorldToMario(*car->GetPosition());
+				auto pos = WorldToMario(obj.GetPosition());
 				auto interaction = sm64_fake_determine_interaction(marioId, pos.x, pos.y, pos.z);
 
 				// ground pound is an instakill
 				if (interaction == INT_GROUND_POUND_OR_TWIRL) {
 					if (dist < fJumpAttackRange && marioState.velocity[1] < -50.0f) { // only kill while moving downwards
-						if (!IsCarDestroyed(car)) {
-							DestroyCar(car);
+						if (obj.IsVehicle()) {
+							auto car = obj.GetVehicle();
+							if (!IsCarDestroyed(car)) {
+								DestroyCar(car);
+								sm64_play_sound_global(SOUND_GENERAL_BREAK_BOX);
+							}
+						}
+						if (obj.pCustomStaticObject && IsCustomObjectInstaKillable(obj.pCustomStaticObject)) {
+							DamageCustomObject(obj.pCustomStaticObject, 99999.0);
 							sm64_play_sound_global(SOUND_GENERAL_BREAK_BOX);
 						}
 					}
@@ -697,19 +580,26 @@ namespace SM64 {
 					if (dist < fJumpAttackRange) {
 						sm64_mario_attack(marioId, pos.x, pos.y, pos.z, dim.y * marioScalar);
 
-						// jumping on weak cops kills them
-						auto name = car->GetVehicleName();
-						if (bEnemyEnabled || (!strcmp(name, "copmidsize") || !strcmp(name, "copghost"))) {
-							if (!IsCarDestroyed(car)) {
-								DestroyCar(car);
-								sm64_play_sound_global(SOUND_GENERAL_BREAK_BOX);
+						if (auto car = obj.GetVehicle()) {
+							// jumping on weak cops kills them
+							auto name = car->GetVehicleName();
+							if (bEnemyEnabled || (!strcmp(name, "copmidsize") || !strcmp(name, "copghost"))) {
+								if (!IsCarDestroyed(car)) {
+									DestroyCar(car);
+									sm64_play_sound_global(SOUND_GENERAL_BREAK_BOX);
+								}
 							}
 						}
 					}
 				}
 				// punches & kicks throw forward
 				else if (interaction == INT_PUNCH || interaction == INT_KICK) {
-					MarioInteract_KnockFwd(rb);
+					if (obj.pCustomStaticObject) {
+						DamageCustomObject(obj.pCustomStaticObject, 10.0);
+					}
+					if (obj.HasPhysics()) {
+						MarioInteract_KnockFwd(&obj);
+					}
 
 					// bounce_back_from_attack
 
@@ -1059,8 +949,6 @@ namespace SM64 {
 
 		if (!FEManager::mPauseRequest) {
 			MarioObjectInteractions();
-			MarioCustomObjectInteractions();
-			MarioCustomPhysicsObjectInteractions();
 			MarioCarInheritance();
 
 			if (bEnemyEnabled) {
@@ -1132,10 +1020,10 @@ namespace SM64 {
 		if (TheGameFlowManager.CurrentGameFlowState == GAMEFLOW_STATE_IN_FRONTEND && bEnemyEnabled) return;
 		if (IsInLoadingScreen() || IsInMovie()) return;
 
-		Render3D::bNoEffect_ReadVertexColor = true;
+		Render3D::RendererConfig.bNoEffect_ReadVertexColor = true;
 		RenderMario<0, false>(marioGeometry);
 		RenderMario<0, true>(marioGeometry);
-		Render3D::bNoEffect_ReadVertexColor = false;
+		Render3D::RendererConfig.bNoEffect_ReadVertexColor = false;
 	}
 
 	void OnAudioTick() {

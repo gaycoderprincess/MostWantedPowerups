@@ -494,10 +494,6 @@ namespace Powerups {
 							if (SM64::bEnabled) {
 								SM64::OnTakeDamage(1, barrelPos, true);
 							}
-
-							if (GetEffectRunning("Juggernaut")) {
-								doWeak = true;
-							}
 						}
 
 						if (iveh->GetDriverClass() == DRIVER_COP) {
@@ -535,6 +531,7 @@ namespace Powerups {
 
 		float scale = 2.0;
 
+		template<bool save>
 		void SpawnObject(NyaVec3 pos, NyaVec3 vel) {
 			static auto mdl = Render3D::CreateModels("oildrum001_explosive.fbx");
 			static auto mdlCol = Render3D::CreateModels("oildrum001_collider.fbx");
@@ -543,12 +540,26 @@ namespace Powerups {
 			CustomPhysicsObjects::CustomPhysicsObject objData;
 			objData.aModels = mdl;
 			objData.vModelSize = {scale,scale,scale};
-			objData.bRemoveOnSafehouse = false;
-			objData.bRemoveOnOutOfBounds = false;
-			objData.bRemoveOnOutOfRange = false;
+			objData.bRemoveOnSafehouse = !save;
+			objData.bRemoveOnOutOfBounds = !save;
+			objData.bRemoveOnOutOfRange = !save;
 			objData.sDebugName = "oildrum_save";
 			objData.pCollisionFunction = OnBarrelHit;
 			CustomPhysicsObjects::CreatePhysicsObject(objData, col, pos, vel);
+		}
+
+		static void SpawnBarrelFromCar(IVehicle* veh) {
+			auto plyPos = *GetLocalPlayerVehicle()->GetPosition();
+			auto pos = *veh->GetPosition();
+			if ((plyPos - pos).length() > 250) return;
+
+			float y = 0.0;
+			if (!WCollisionMgr::GetWorldHeightAtPoint(&pos, &y, nullptr)) return;
+
+			auto rb = veh->mCOMObject->Find<IRigidBody>();
+			auto vel = *rb->GetLinearVelocity();
+			pos.y -= 5.0;
+			Powerups::OilDrum::SpawnObject<false>(pos, vel);
 		}
 
 		void SpawnBehindCar(IRigidBody* rb) {
@@ -560,7 +571,7 @@ namespace Powerups {
 			NyaVec3 pos = ply;
 			pos -= fwd * 5;
 			pos.y += 2;
-			SpawnObject(pos, vel);
+			SpawnObject<false>(pos, vel);
 		}
 	}
 
@@ -613,7 +624,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/revolt_6.png",
 			//"CwoeePowerups/data/textures/revolt_7.png",
 			"CwoeePowerups/data/textures/revolt_8.png",
-			"CwoeePowerups/data/textures/revolt_9.png",
+			"CwoeePowerups/data/textures/powerup_heavyblock.png",
 			"CwoeePowerups/data/textures/revolt_10.png",
 			"CwoeePowerups/data/textures/revolt_12.png",
 			"CwoeePowerups/data/textures/mk64_1.png",
@@ -632,7 +643,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/mk64_3.png",
 			//"CwoeePowerups/data/textures/revolt_7.png",
 			"CwoeePowerups/data/textures/revolt_8.png",
-			"CwoeePowerups/data/textures/revolt_9.png",
+			"CwoeePowerups/data/textures/powerup_heavyblock.png",
 			"CwoeePowerups/data/textures/revolt_10.png",
 			"CwoeePowerups/data/textures/revolt_12.png",
 			"CwoeePowerups/data/textures/mk64_1.png",
@@ -1662,9 +1673,26 @@ namespace Powerups {
 		}
 	}
 
+	void PowerupMod_Heli_OnTick() {
+		if (!IsInFocusedPursuit()) return;
+
+		static CNyaTimer gTimer;
+		gTimer.Process();
+		if (gTimer.fTotalTime >= 10.0) {
+			auto cars = GetActiveVehicles(DRIVER_COP);
+			for (auto& veh : cars) {
+				if (!strcmp(veh->GetVehicleName(), "copheli")) {
+					OilDrum::SpawnBarrelFromCar(veh);
+				}
+			}
+			gTimer.fTotalTime -= 10.0;
+		}
+	}
+
 	ChloeHook Init([](){
 		aDrawingLoopFunctions.push_back(OnTick);
 		aDrawingLoopFunctions.push_back(PowerupMod_OnTick);
+		aDrawingLoopFunctions.push_back(PowerupMod_Heli_OnTick);
 		aDrawing3DLoopFunctions.push_back(OnTick3D);
 		NyaHookLib::Patch<uint16_t>(0x6B1A02, 0x9090); // disable player causality check for cop flipping
 	});
