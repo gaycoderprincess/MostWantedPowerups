@@ -168,6 +168,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			if (std::filesystem::exists("NFSMWPowerups_gcp.toml")) {
 				auto config = toml::parse_file("NFSMWPowerups_gcp.toml");
 				Powerups::bMK64Style = config["style_mk64"].value_or(Powerups::bMK64Style);
+				Powerups::bOverheadDisplay = config["show_overhead"].value_or(Powerups::bOverheadDisplay);
 			}
 
 			ChloeMenuLib::RegisterMenu("Cwoee Powerups", &DebugMenu);

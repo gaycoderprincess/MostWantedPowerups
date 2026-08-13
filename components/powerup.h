@@ -1317,7 +1317,8 @@ namespace Powerups {
 				if (auto tex = GetPowerupTexture(GetPowerupWithRoll())) {
 					RenderOverhead(GetBaseTexture(), 1.0, 1.0, 0.0);
 					if (GetPowerupAlpha() > 64) {
-						RenderOverhead(tex, 1.0, 1.0, -0.05);
+						RenderOverhead(tex, -1.0, 1.0, 0.05); // viewing from front
+						RenderOverhead(tex, 1.0, 1.0, -0.05); // viewing from behind
 					}
 				}
 			}
