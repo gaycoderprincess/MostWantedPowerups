@@ -18,6 +18,42 @@ namespace Render3D {
 		}
 	} ModelLoaderConfig;
 
+	struct {
+		bool bForceNoEffect = false;
+		bool bForceNoCulling = false;
+
+		bool bNoEffect_ReadVertexColor = false;
+
+		D3DXVECTOR4 fDIFFUSEMIN = {0.4,0.4,0.4,1};
+		D3DXVECTOR4 fDIFFUSERANGE = {0.6,0.6,0.6,0};
+		D3DXVECTOR4 fSPECULARMIN = {0.16,0.2,0.16,0};
+		D3DXVECTOR4 fSPECULARRANGE = {0.04,0.0,0.04,0};
+		D3DXVECTOR4 fENVMAPMIN = {1.75,1.75,1.75,0};
+		D3DXVECTOR4 fENVMAPANGE = {-1.65,-1.65,-1.65,0};
+		float fSPECULARPOWER = 8.0;
+		float fENVMAPPOWER = 0.15;
+
+		IDirect3DTexture9* pOverrideDiffuse = nullptr;
+
+		void Reset() {
+			bForceNoEffect = false;
+			bForceNoCulling = false;
+
+			bNoEffect_ReadVertexColor = false;
+
+			fDIFFUSEMIN = {0.4,0.4,0.4,1};
+			fDIFFUSERANGE = {0.6,0.6,0.6,0};
+			fSPECULARMIN = {0.16,0.2,0.16,0};
+			fSPECULARRANGE = {0.04,0.0,0.04,0};
+			fENVMAPMIN = {1.75,1.75,1.75,0};
+			fENVMAPANGE = {-1.65,-1.65,-1.65,0};
+			fSPECULARPOWER = 8.0;
+			fENVMAPPOWER = 0.15;
+
+			pOverrideDiffuse = nullptr;
+		}
+	} RendererConfig;
+
 	struct CwoeeVertexData {
 		float vPos[3];
 		float vNormals[3];
@@ -32,10 +68,9 @@ namespace Render3D {
 	};
 
 	eView* pViewToDraw = nullptr;
-	bool bForceNoEffect = false;
+
 	bool bForceNoEnvmap = false;
 	bool bForceNoShadows = false;
-	bool bForceNoCulling = false;
 
 	bool bUserForceNoEffect = false;
 	bool bUserForceNoEnvmap = false;
@@ -44,7 +79,7 @@ namespace Render3D {
 	bool bShadowsAvailable = false;
 
 	bool IsEffectDisabled() {
-		return bForceNoEffect || bUserForceNoEffect;
+		return RendererConfig.bForceNoEffect || bUserForceNoEffect;
 	}
 	bool IsEnvmapDisabled() {
 		return bForceNoEnvmap || bUserForceNoEnvmap;
@@ -52,17 +87,6 @@ namespace Render3D {
 	bool IsShadowingDisabled() {
 		return bForceNoShadows || bUserForceNoShadows;
 	}
-
-	bool bNoEffect_ReadVertexColor = false;
-
-	D3DXVECTOR4 fDIFFUSEMIN = {0.4,0.4,0.4,1};
-	D3DXVECTOR4 fDIFFUSERANGE = {0.6,0.6,0.6,0};
-	D3DXVECTOR4 fSPECULARMIN = {0.16,0.2,0.16,0};
-	D3DXVECTOR4 fSPECULARRANGE = {0.04,0.0,0.04,0};
-	D3DXVECTOR4 fENVMAPMIN = {1.75,1.75,1.75,0};
-	D3DXVECTOR4 fENVMAPANGE = {-1.65,-1.65,-1.65,0};
-	float fSPECULARPOWER = 8.0;
-	float fENVMAPPOWER = 0.15;
 
 	eEffect* pLastUsedEffect = nullptr;
 	IDirect3DTexture9* pLastUsedTexture = nullptr;
@@ -90,7 +114,7 @@ namespace Render3D {
 		int effectId;
 		bool zwrite;
 		int cullMode;
-		bool noeffect_vertexColor = bNoEffect_ReadVertexColor;
+		bool noeffect_vertexColor = RendererConfig.bNoEffect_ReadVertexColor;
 	};
 	tRenderProperties LastRenderProperties;
 	bool ShouldRefreshRenderProperties(bool useAlpha, int effectId, bool zwrite, int cullMode) {
@@ -107,8 +131,12 @@ namespace Render3D {
 	struct tModel {
 		IDirect3DIndexBuffer9* pIndexBuffer = nullptr;
 		IDirect3DVertexBuffer9* pVertexBuffer = nullptr;
-		IDirect3DTexture9* pTexture = nullptr;
+		IDirect3DTexture9* pTextureDiffuse = nullptr;
+		IDirect3DTexture9* pTextureNormal = nullptr;
+		IDirect3DTexture9* pTextureSpecular = nullptr;
 		std::string sTextureName;
+		std::string sNormalTextureName;
+		std::string sSpecularTextureName;
 		uint32_t nVertexCount;
 		uint32_t nFaceCount;
 		bool bInvalidated = false;
@@ -135,10 +163,15 @@ namespace Render3D {
 
 			int cullMode = D3DCULL_CW;
 			if (isEnvmap) cullMode = D3DCULL_CCW;
-			if (bForceNoCulling) cullMode = D3DCULL_NONE;
+			if (RendererConfig.bForceNoCulling) cullMode = D3DCULL_NONE;
 
 			if (isShadow) {
 				effectId = effectId == EEFFECT_CAR ? EEFFECT_CARSHADOWMAP : EEFFECT_WORLDNOFOG;
+			}
+			else {
+				if (pTextureNormal && effectId == EEFFECT_WORLD) {
+					effectId = EEFFECT_WORLDNORMALMAP;
+				}
 			}
 
 			bool shouldRefresh = ShouldRefreshRenderProperties(useAlpha, effectId, zwrite, cullMode);
@@ -175,21 +208,21 @@ namespace Render3D {
 					// SPECULARPOWER float
 					// ENVMAPPOWER float
 
-					effect->hD3DXEffect->SetFloat(effect->mParamTable->mParamMappingTable[CParamHashTable::SPECULARPOWER].mHandle, fSPECULARPOWER);
-					effect->hD3DXEffect->SetFloat(effect->mParamTable->mParamMappingTable[CParamHashTable::ENVMAPPOWER].mHandle, fENVMAPPOWER);
+					effect->hD3DXEffect->SetFloat(effect->mParamTable->mParamMappingTable[CParamHashTable::SPECULARPOWER].mHandle, RendererConfig.fSPECULARPOWER);
+					effect->hD3DXEffect->SetFloat(effect->mParamTable->mParamMappingTable[CParamHashTable::ENVMAPPOWER].mHandle, RendererConfig.fENVMAPPOWER);
 
-					D3DXVECTOR4 v = fDIFFUSEMIN;
+					D3DXVECTOR4 v = RendererConfig.fDIFFUSEMIN;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::DIFFUSEMIN].mHandle, &v);
-					v = fDIFFUSERANGE;
+					v = RendererConfig.fDIFFUSERANGE;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::DIFFUSERANGE].mHandle, &v);
-					v = fSPECULARMIN;
+					v = RendererConfig.fSPECULARMIN;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::SPECULARMIN].mHandle, &v);
-					v = fSPECULARRANGE;
+					v = RendererConfig.fSPECULARRANGE;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::SPECULARRANGE].mHandle, &v);
 
-					v = fENVMAPMIN;
+					v = RendererConfig.fENVMAPMIN;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::ENVMAPMIN].mHandle, &v);
-					v = fENVMAPANGE;
+					v = RendererConfig.fENVMAPANGE;
 					effect->hD3DXEffect->SetVector(effect->mParamTable->mParamMappingTable[CParamHashTable::ENVMAPANGE].mHandle, &v);
 
 					//static D3DXHANDLE SpecularHotSpot = effect->hD3DXEffect->GetParameterByName(0, "SpecularHotSpot");
@@ -264,15 +297,17 @@ namespace Render3D {
 				g_pd3dDevice->SetIndices(pIndexBuffer);
 				pLastUsedIBuffer = pIndexBuffer;
 			}
-			//for (int i = 1; i < 8; i++) {
-			//	g_pd3dDevice->SetTexture(i, nullptr);
-			//}
-			if (pLastUsedTexture != pTexture) {
-				effect->hD3DXEffect->SetTexture(effect->mParamTable->mParamMappingTable[CParamHashTable::DiffuseMap].mHandle, pTexture);
-				if (effectId == EEFFECT_CAR) {
-					effect->hD3DXEffect->SetTexture(effect->mParamTable->mParamMappingTable[CParamHashTable::NormalMapTexture].mHandle, pTexture);
-				}
-				pLastUsedTexture = pTexture;
+
+			auto diffuse = RendererConfig.pOverrideDiffuse ? RendererConfig.pOverrideDiffuse : pTextureDiffuse;
+			if (pLastUsedTexture != diffuse) {
+				effect->hD3DXEffect->SetTexture(effect->mParamTable->mParamMappingTable[CParamHashTable::DiffuseMap].mHandle, diffuse);
+				pLastUsedTexture = diffuse;
+			}
+			if (effectId == EEFFECT_WORLDNORMALMAP || effectId == EEFFECT_CAR) {
+				effect->hD3DXEffect->SetTexture(effect->mParamTable->mParamMappingTable[CParamHashTable::NormalMapTexture].mHandle, pTextureNormal ? pTextureNormal : pTextureDiffuse);
+			}
+			if (effectId == EEFFECT_WORLDNORMALMAP && pTextureSpecular) {
+				effect->hD3DXEffect->SetTexture(effect->mParamTable->mParamMappingTable[CParamHashTable::SPECULARMAPTEXTURE].mHandle, pTextureSpecular);
 			}
 			effect->hD3DXEffect->CommitChanges();
 
@@ -298,7 +333,7 @@ namespace Render3D {
 
 			int cullMode = D3DCULL_CW;
 			if (isEnvmap) cullMode = D3DCULL_CCW;
-			if (bForceNoCulling) cullMode = D3DCULL_NONE;
+			if (RendererConfig.bForceNoCulling) cullMode = D3DCULL_NONE;
 
 			ShouldRefreshRenderProperties(useAlpha, (int)useZ + 64, zwrite, cullMode);
 
@@ -326,7 +361,7 @@ namespace Render3D {
 			g_pd3dDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 			g_pd3dDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 
-			g_pd3dDevice->SetTextureStageState(0, D3DTSS_COLOROP, bNoEffect_ReadVertexColor ? D3DTOP_MODULATE : D3DTOP_SELECTARG1);
+			g_pd3dDevice->SetTextureStageState(0, D3DTSS_COLOROP, RendererConfig.bNoEffect_ReadVertexColor ? D3DTOP_MODULATE : D3DTOP_SELECTARG1);
 			g_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 			g_pd3dDevice->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
 			g_pd3dDevice->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
@@ -347,7 +382,7 @@ namespace Render3D {
 				g_pd3dDevice->SetIndices(pIndexBuffer);
 				pLastUsedIBuffer = pIndexBuffer;
 			}
-			g_pd3dDevice->SetTexture(0, pTexture);
+			g_pd3dDevice->SetTexture(0, RendererConfig.pOverrideDiffuse ? RendererConfig.pOverrideDiffuse : pTextureDiffuse);
 			g_pd3dDevice->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, nVertexCount, 0, nFaceCount);
 		}
 
@@ -377,6 +412,40 @@ namespace Render3D {
 	std::vector<tModel*> aAllModels;
 	std::vector<tTextureInfo> aAllTextures;
 	std::vector<std::string> aFailedTextures;
+
+	IDirect3DTexture9* LoadOrFindTexture(const std::string& material, bool addToFail) {
+		auto baseTextureName = material;
+		if (!baseTextureName.empty() && baseTextureName.find('.') == std::string::npos) {
+			baseTextureName += ".png";
+		}
+
+		auto textureName = ModelLoaderConfig.sTextureSubdir + baseTextureName;
+		if (baseTextureName.empty()) {
+			textureName = "white.png";
+		}
+
+		for (auto& texture : aAllTextures) {
+			if (texture.sFile == textureName) {
+				return texture.pTexture;
+			}
+		}
+
+		if (auto tex = LoadTexture_SetDir(std::format("CwoeeChaos/data/models/{}", textureName).c_str())) {
+			aAllTextures.push_back({textureName, tex});
+			return tex;
+		}
+
+		if (addToFail) {
+			bool isNew = true;
+			for (auto& name : aFailedTextures) {
+				if (name == textureName) isNew = false;
+			}
+			if (isNew) {
+				aFailedTextures.push_back(textureName);
+			}
+		}
+		return nullptr;
+	}
 
 	tModel* CreateOneModel(int numVertices, int numFaces, const NyaVec3* vertices, const NyaVec3* normals, const NyaVec3* tangents, const NyaVec3* bitangents, const NyaVec3* uvs, const NyaDrawing::CNyaRGBA32* colors, const uint32_t* indices, const std::string& material) {
 		auto model = new tModel;
@@ -478,33 +547,16 @@ namespace Render3D {
 		model->pVertexBuffer->Unlock();
 		model->pIndexBuffer->Unlock();
 
-		auto baseTextureName = material;
-		auto textureName = ModelLoaderConfig.sTextureSubdir + baseTextureName;
-		if (baseTextureName.empty()) {
-			textureName = "white.png";
-		}
-		model->sTextureName = baseTextureName;
+		model->sTextureName = material;
+		model->sNormalTextureName = material + "_normal";
+		model->sSpecularTextureName = material + "_specular";
 
-		for (auto& texture : aAllTextures) {
-			if (texture.sFile == textureName) {
-				model->pTexture = texture.pTexture;
-				break;
-			}
-		}
-		if (!model->pTexture) {
-			if (auto tex = LoadTexture_SetDir(std::format("CwoeePowerups/data/models/{}", textureName).c_str())) {
-				model->pTexture = tex;
-				aAllTextures.push_back({textureName, model->pTexture});
-			} else {
-				bool isNew = true;
-				for (auto& name : aFailedTextures) {
-					if (name == textureName) isNew = false;
-				}
-				if (isNew) {
-					aFailedTextures.push_back(textureName);
-				}
-			}
-		}
+		model->pTextureDiffuse = LoadOrFindTexture(model->sTextureName, true);
+		//model->pTextureNormal = LoadOrFindTexture(model->sNormalTextureName, false);
+		//model->pTextureSpecular = LoadOrFindTexture(model->sSpecularTextureName, false);
+		//if (model->pTextureNormal && !model->pTextureSpecular) {
+		//	model->pTextureSpecular = LoadOrFindTexture("black.png", true);
+		//}
 
 		aAllModels.push_back(model);
 		return model;
@@ -513,7 +565,7 @@ namespace Render3D {
 	std::vector<tModel*> CreateModels(const std::string& path) {
 		DLLDirSetter _setdir;
 
-		auto fullPathCwo = std::format("CwoeePowerups/data/models/{}.cwo", path);
+		auto fullPathCwo = std::format("CwoeeChaos/data/models/{}.cwo", path);
 		if (!std::filesystem::exists(fullPathCwo)) {
 			MessageBoxA(0, std::format("Failed to find model {}!", fullPathCwo).c_str(), "nya?!~", MB_ICONERROR);
 			exit(0);

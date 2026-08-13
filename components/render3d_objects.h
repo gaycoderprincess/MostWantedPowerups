@@ -241,6 +241,8 @@ namespace Render3DObjects {
 		bool bNoEnvmap = false;
 		std::string sDebugName;
 
+		float fHealth = 100.0;
+
 		NyaVec3 vLastBarrierPosition = UMath::Vector3::kZero;
 		NyaVec3 vLastTriPosition = UMath::Vector3::kZero;
 		std::vector<CustomBarrier> Barriers = {};
@@ -508,11 +510,11 @@ namespace Render3DObjects {
 		}
 
 		void Render() {
-			if (bNoBackfaceCulling) { Render3D::bForceNoCulling = true; }
+			if (bNoBackfaceCulling) { Render3D::RendererConfig.bForceNoCulling = true; }
 			for (auto& model : aModels) {
 				model->RenderAt(WorldToRenderMatrix(mMatrix), bUseAlpha);
 			}
-			if (bNoBackfaceCulling) { Render3D::bForceNoCulling = false; }
+			if (bNoBackfaceCulling) { Render3D::RendererConfig.bForceNoCulling = false; }
 		}
 
 		void Destroy(bool deleteModels) {
@@ -544,6 +546,12 @@ namespace Render3DObjects {
 		}
 	};
 	std::vector<Object*> aObjects;
+
+	void GenericHPOnTick(Object* obj, double delta) {
+		if (obj->fHealth <= 0.0) {
+			obj->aModels.clear();
+		}
+	}
 
 	void OnTick() {
 		static CNyaTimer gTimer;
