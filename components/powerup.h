@@ -702,11 +702,12 @@ namespace Powerups {
 		NyaAudio::NyaSound starfire = 0;
 		NyaAudio::NyaSound wbombfire = 0;
 		NyaAudio::NyaSound mushroom = 0;
+		NyaAudio::NyaSound starmusic = 0;
 
 		bool ExecutePowerup() {
 			switch (PowerupID) {
 				case POWERUP_ELECTROPULSE:
-					fElectroTime = pUser->GetDriverClass() == DRIVER_COP ? 7.0 : 15.0;
+					fElectroTime = pUser->GetDriverClass() == DRIVER_COP ? 5.0 : 15.0;
 					return true;
 				case POWERUP_CLONE: {
 					SpawnFakePowerupBlock(pUser->mCOMObject->Find<IRigidBody>());
@@ -749,6 +750,11 @@ namespace Powerups {
 				case POWERUP_INVINCIBLE: {
 					if (auto ply = pUser->mCOMObject->Find<IRBVehicle>()) {
 						ply->SetInvulnerability(INVULNERABLE_FROM_RESET, 15.0);
+
+						if (bIsLocalPlayer) {
+							if (!starmusic) starmusic = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/starmusic.mp3");
+							PlayAudioFromCar(starmusic, pUser, true);
+						}
 					}
 					return true;
 				} break;
@@ -913,10 +919,11 @@ namespace Powerups {
 					if (aTimeSinceRolled[i] < 20.0) continue;
 
 					if (i == POWERUP_MARIO && !SM64::bAvailable) continue;
-					if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 30.0) continue;
+					if (i == POWERUP_MARIO && fTimeSinceMarioSpawned < 60.0) continue;
 
 					if (i == POWERUP_PUTTYBOMB && numCops <= 3) continue;
 					if (i == POWERUP_CLONE && ReVoltFirework::PickTarget(GetLocalPlayerVehicle()) != pUser) continue;
+					if (i == POWERUP_OILDRUM && ReVoltFirework::PickTarget(GetLocalPlayerVehicle()) != pUser) continue;
 
 					// these two are pretty OP
 					if (i == POWERUP_ELECTROPULSE && heatLevel < 3.0) continue;
@@ -925,6 +932,8 @@ namespace Powerups {
 					if (i == POWERUP_STAR && heatLevel < 6.0 && !PercentageChanceCheck(25)) continue;
 
 					if (i == POWERUP_MUSHROOM || i == POWERUP_MUSHROOMPACK) continue;
+
+					if (i == POWERUP_TURBO) continue;
 
 					powerupsAvailable.push_back(i);
 				}
@@ -1201,6 +1210,14 @@ namespace Powerups {
 				time += delta;
 			}
 
+			if (starmusic && !NyaAudio::IsFinishedPlaying(starmusic)) {
+				if (auto rb = pUser->mCOMObject->Find<IRBVehicle>()) {
+					if (rb->GetInvulnerability() != INVULNERABLE_FROM_RESET) {
+						NyaAudio::Stop(starmusic);
+					}
+				}
+			}
+
 			fTimeSinceLastFire += delta;
 
 			fRollTime -= delta;
@@ -1368,6 +1385,7 @@ namespace Powerups {
 		void StopSounds() {
 			NyaAudio::Stop(electro);
 			NyaAudio::Stop(electrozap);
+			NyaAudio::Stop(starmusic);
 		}
 
 		void DeleteSounds() {
@@ -1376,6 +1394,7 @@ namespace Powerups {
 			if (balldrop) NyaAudio::Delete(&balldrop);
 			if (starfire) NyaAudio::Delete(&starfire);
 			if (wbombfire) NyaAudio::Delete(&wbombfire);
+			if (starmusic) NyaAudio::Delete(&starmusic);
 		}
 	};
 	std::vector<PowerupState> aPowerupStates;
@@ -1742,12 +1761,18 @@ namespace Powerups {
 				fPursuitCopPowerupTimer += gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed;
 				if (fPursuitCopPowerupTimer > copPowerupInterval) {
 					auto cars = GetActiveVehicles(DRIVER_COP);
-					if (!cars.empty()) {
-						auto car = cars[rand()%cars.size()];
-						if (!IsCarDestroyed(car) && strcmp(car->GetVehicleName(), "copheli") && !PlayerHasPowerup(car) && !car->GetAIVehiclePtr()->GetRoadBlock()) {
-							RollPowerup(car);
-							fPursuitCopPowerupTimer = 0;
-						}
+					auto validCars = cars;
+					validCars.clear();
+					for (auto& car : cars) {
+						if (IsCarDestroyed(car)) continue;
+						if (!strcmp(car->GetVehicleName(), "copheli")) continue;
+						if (PlayerHasPowerup(car)) continue;
+						if (car->GetAIVehiclePtr()->GetRoadBlock()) continue;
+						validCars.push_back(car);
+					}
+					if (!validCars.empty()) {
+						RollPowerup(validCars[rand()%validCars.size()]);
+						fPursuitCopPowerupTimer = 0;
 					}
 				}
 				if (!PlayerHasPowerup(GetLocalPlayerVehicle())) {
