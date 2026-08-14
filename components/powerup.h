@@ -1446,6 +1446,8 @@ namespace Powerups {
 		}
 
 		static void RenderOverhead(IVehicle* veh, IDirect3DTexture9* tex, float scaleX, float scaleY, float yOffset, float zOffset) {
+			if (IsRenderingShadows(Render3D::pViewToDraw)) return;
+
 			static auto models = Render3D::CreateModels("plane2d.fbx");
 
 			Render3D::RendererConfig.pOverrideDiffuse = tex;
@@ -1473,12 +1475,12 @@ namespace Powerups {
 				}
 			}
 
-			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
-			Render3D::RendererConfig.bForceNoCulling = false;
-			Render3D::RendererConfig.bForceNoEffect = false;
+			Render3D::RendererConfig.Reset();
 		}
 
 		static void RenderOnGround(UMath::Vector3 pos, IDirect3DTexture9* tex, float scaleX, float scaleY, float yOffset) {
+			if (IsRenderingShadows(Render3D::pViewToDraw)) return;
+
 			static auto models = Render3D::CreateModels("plane2d.fbx");
 
 			GetWorldHeightAtPoint_WithCustom(&pos, &pos.y, nullptr);
@@ -1486,6 +1488,7 @@ namespace Powerups {
 			Render3D::RendererConfig.pOverrideDiffuse = tex;
 			Render3D::RendererConfig.bForceNoCulling = true;
 			Render3D::RendererConfig.bForceNoEffect = true;
+			Render3D::RendererConfig.bNoEffect_AlphaCutoff = false;
 
 			NyaMat4x4 mat;
 			mat.Rotate(NyaVec3(90 * 0.01745329, 0, 0));
@@ -1500,9 +1503,7 @@ namespace Powerups {
 				mdl->RenderAt(WorldToRenderMatrix(mat), true);
 			}
 
-			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
-			Render3D::RendererConfig.bForceNoCulling = false;
-			Render3D::RendererConfig.bForceNoEffect = false;
+			Render3D::RendererConfig.Reset();
 		}
 
 		void Process3D() {
