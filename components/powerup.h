@@ -212,6 +212,10 @@ namespace Powerups {
 			return GetMostInFrontActiveVehicle(user, 200, inFrontThreshold);
 		}
 
+		IVehicle* PickTargetBehind(IVehicle* user) {
+			return GetMostInFrontActiveVehicle(user, 200, -inFrontThreshold);
+		}
+
 		IVehicle* PickTargetAI(IVehicle* user) {
 			return GetMostInFrontActiveVehicle(user, 200, inFrontThresholdAI);
 		}
@@ -596,6 +600,7 @@ namespace Powerups {
 		POWERUP_MARIO,
 		POWERUP_OILDRUM,
 		POWERUP_MAGNET,
+		POWERUP_BARGE,
 		NUM_POWERUPS
 	};
 	const char* aPowerupNames[] = {
@@ -617,6 +622,7 @@ namespace Powerups {
 		"MARIO",
 		"OILDRUM",
 		"MAGNET",
+		"BARGE",
 	};
 
 	const char* aPowerupSpriteNames1[] = {
@@ -638,6 +644,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/powerup_mario.png",
 			"CwoeePowerups/data/textures/powerup_oildrum.png",
 			"CwoeePowerups/data/textures/powerup_magnet.png",
+			"CwoeePowerups/data/textures/powerup_barge.png",
 	};
 	const char* aPowerupSpriteNames2[] = {
 			//"CwoeePowerups/data/textures/revolt_1.png",
@@ -658,6 +665,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/powerup_mario.png",
 			"CwoeePowerups/data/textures/powerup_oildrum.png",
 			"CwoeePowerups/data/textures/powerup_magnet.png",
+			"CwoeePowerups/data/textures/powerup_barge.png",
 	};
 	IDirect3DTexture9* aPowerupTextures1[NUM_POWERUPS] = {};
 	IDirect3DTexture9* aPowerupTextures2[NUM_POWERUPS] = {};
@@ -709,6 +717,7 @@ namespace Powerups {
 		NyaAudio::NyaSound wbombfire = 0;
 		NyaAudio::NyaSound mushroom = 0;
 		NyaAudio::NyaSound starmusic = 0;
+		NyaAudio::NyaSound barge = 0;
 
 		bool ExecutePowerup() {
 			switch (PowerupID) {
@@ -742,9 +751,62 @@ namespace Powerups {
 					return true;
 				} break;
 				case POWERUP_MAGNET: {
-					if (auto target = ReVoltFirework::PickTarget(pUser)) {
+					bool behind = false;
+					if (auto input = pUser->mCOMObject->Find<IInput>()) {
+						behind = input->IsLookBackButtonPressed();
+					}
+					if (auto target = behind ? ReVoltFirework::PickTargetBehind(pUser) : ReVoltFirework::PickTarget(pUser)) {
 						fMagnetTime = 10.0;
 						pMagnetTarget = target;
+					}
+					return true;
+				} break;
+				case POWERUP_BARGE: {
+					if (!barge) barge = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/barge.mp3");
+					PlayAudioFromCar(barge, pUser, true);
+
+					float attackRange = 25;
+					float attackPower = 50;
+					float attackPowerAng = 25;
+
+					auto userPos = *pUser->GetPosition();
+
+					auto cars = GetActiveSharedRigidBodies();
+					if (SM64::bEnemyEnabled) {
+						auto dist = (SM64::GetMarioWorldPos() - userPos).length();
+						if (dist < attackRange) {
+							SM64::OnTakeDamage(1, userPos, true);
+						}
+					}
+					for (auto& car : cars) {
+						auto pos = car.GetPosition();
+						auto dist = (pos - userPos).length();
+						if (dist < attackRange) {
+							auto dir = (pos - userPos);
+							dir.Normalize();
+
+							auto iveh = car.GetVehicle();
+							if (iveh) {
+								if (iveh == pUser) continue;
+								if (auto rb = iveh->mCOMObject->Find<IRBVehicle>()) {
+									if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
+								}
+							}
+
+							car.WakeObject();
+
+							auto vel = car.GetLinearVelocity();
+							vel += dir * attackPower;
+							car.SetLinearVelocity(vel);
+
+							auto avel = car.GetAngularVelocity();
+							avel += dir * attackPowerAng;
+							car.SetAngularVelocity(avel);
+
+							if (iveh && iveh->GetDriverClass() == DRIVER_COP) {
+								DestroyCar(iveh);
+							}
+						}
 					}
 					return true;
 				} break;
@@ -842,7 +904,12 @@ namespace Powerups {
 				case POWERUP_MAGNET:
 				case POWERUP_FIREWORK:
 				case POWERUP_FIREWORKPACK: {
-					auto target = ReVoltFirework::PickTarget(pUser);
+					bool behind = false;
+					if (bIsLocalPlayer && PowerupID == POWERUP_MAGNET) {
+						behind = pUser->mCOMObject->Find<IInput>()->IsLookBackButtonPressed();
+					}
+
+					auto target = behind ? ReVoltFirework::PickTargetBehind(pUser) : ReVoltFirework::PickTarget(pUser);
 					if (bIsLocalPlayer || target == GetLocalPlayerVehicle()) {
 						ReVoltFirework::DrawCrosshair(target, bIsLocalPlayer);
 					}
@@ -1127,13 +1194,15 @@ namespace Powerups {
 
 			if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL || PowerupID == POWERUP_MAGNET) {
 				if (fTimeSinceLastFire < 0.5) return false;
-				auto target = ReVoltFirework::PickTargetAI(pUser);
-				if (target && pUser->GetDriverClass() == DRIVER_COP) {
+
+				auto target = ReVoltFirework::PickTargetAI(pUser); // target to make sure there's something right in front
+				auto realTarget = ReVoltFirework::PickTarget(pUser); // real target picked by the powerup on fire
+				if (target && realTarget && pUser->GetDriverClass() == DRIVER_COP) {
 					// prevent cop friendly fire
-					if (target->GetDriverClass() != DRIVER_HUMAN) return false;
+					if (realTarget->GetDriverClass() != DRIVER_HUMAN) return false;
 
 					// prevent cops killing themselves
-					if ((*target->GetPosition() - *pUser->GetPosition()).length() < 10) return false;
+					if ((*realTarget->GetPosition() - *pUser->GetPosition()).length() < 10) return false;
 				}
 
 				return target != nullptr;
@@ -1143,10 +1212,10 @@ namespace Powerups {
 
 				return GetLocalPlayerInterface<IInput>()->GetControls()->fGas >= 0.95;
 			}
-			if (PowerupID == POWERUP_ELECTROPULSE) {
+			if (PowerupID == POWERUP_ELECTROPULSE || PowerupID == POWERUP_BARGE) {
 				if (!GetZappedCars().empty()) return true; // use pulse if cars are nearby
 				if (GetPlayerRacePlacement() == 1) return true; // immediately use pulse if player is in first so we don't hoard it
-				if (pUser->GetDriverClass() == DRIVER_COP) return true; // immediately use if cop, otherwise this is way too OP
+				if (PowerupID == POWERUP_ELECTROPULSE && pUser->GetDriverClass() == DRIVER_COP) return true; // immediately use if cop, otherwise this is way too OP
 				return false;
 			}
 			return true;
@@ -1414,7 +1483,7 @@ namespace Powerups {
 
 			static auto magnet = LoadTexture_SetDir("CwoeePowerups/data/textures/powerup_magnet_overhead.png");
 			if (magnet && fMagnetTime > 0.0 && IsVehicleValidAndActive(pMagnetTarget)) {
-				RenderOverhead(pMagnetTarget, magnet, 1.0, 1.0, 0.5, 0.1);
+				RenderOverhead(pMagnetTarget, magnet, 1.0, 1.0, 0.5, -0.1);
 			}
 
 			if (fElectroTime > 0.0) {
@@ -1465,6 +1534,7 @@ namespace Powerups {
 			NyaAudio::Stop(electro);
 			NyaAudio::Stop(electrozap);
 			NyaAudio::Stop(starmusic);
+			NyaAudio::Stop(barge);
 		}
 
 		void DeleteSounds() {
@@ -1474,6 +1544,7 @@ namespace Powerups {
 			if (starfire) NyaAudio::Delete(&starfire);
 			if (wbombfire) NyaAudio::Delete(&wbombfire);
 			if (starmusic) NyaAudio::Delete(&starmusic);
+			if (barge) NyaAudio::Delete(&barge);
 		}
 	};
 	std::vector<PowerupState> aPowerupStates;
@@ -1803,6 +1874,7 @@ namespace Powerups {
 				for (auto& state : aPowerupStates) {
 					if (!state.IsValid()) continue;
 					state.Reset();
+					state.StopSounds();
 				}
 			}
 			else {

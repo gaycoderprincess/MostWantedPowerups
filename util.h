@@ -243,7 +243,12 @@ IVehicle* GetMostInFrontActiveVehicle(IVehicle* toVehicle, float maxDistance = 9
 		auto targetPos = *car->GetPosition();
 		auto dir = (sourcePos - targetPos);
 		dir.Normalize();
-		if (dir.Dot(sourceFwd) > -inFrontThreshold) continue;
+		if (inFrontThreshold > 0) {
+			if (dir.Dot(sourceFwd) > -inFrontThreshold) continue;
+		}
+		else {
+			if (dir.Dot(sourceFwd) < -inFrontThreshold) continue;
+		}
 		if ((sourcePos - targetPos).length() > maxDistance) continue;
 		if (dir.Dot(sourceFwd) < dot) {
 			out = car;
