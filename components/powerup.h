@@ -323,7 +323,14 @@ namespace Powerups {
 					NyaAudio::Play(ExplodeSound);
 				}
 
+#ifdef CWOEECHAOS
+				float power = fExplosionPowerChaos;
+				if (CustomPhysicsBall::bEnabled) {
+					FireworkAttack_Box3D(obj->mMatrix.p, CustomPhysicsBall::BallBody, power, fExplosionAngVelocityMult, fExplosionMaxDistance);
+				}
+#else
 				float power = fExplosionPower;
+#endif
 				for (auto& phys : CustomPhysicsObjects::aPhysicsObjects) {
 					FireworkAttack_Box3D(obj->mMatrix.p, phys->nB3Body, power, fExplosionAngVelocityMult, fExplosionMaxDistance);
 				}
@@ -500,6 +507,12 @@ namespace Powerups {
 							if (SM64::bEnabled) {
 								SM64::OnTakeDamage(1, barrelPos, true);
 							}
+
+#ifdef CWOEECHAOS
+							if (GetEffectRunning("Juggernaut")) {
+								doWeak = true;
+							}
+#endif
 						}
 
 						if (iveh->GetDriverClass() == DRIVER_COP) {
@@ -1251,6 +1264,18 @@ namespace Powerups {
 
 		void ProcessLastingEffects(double delta) {
 			if (fTurboTime > 0.0) {
+#ifdef CWOEECHAOS
+				bForcePlayerNOS = true;
+				if (auto ply = pUser->mCOMObject->Find<IEngine>()) {
+					ply->ChargeNOS(1.0);
+				}
+
+				fTurboTime -= delta;
+				if (fTurboTime <= 0.0) {
+					bForcePlayerNOS = false;
+					fForcePlayerNoNOS = 0.5;
+				}
+#else
 				fTurboTime -= delta;
 
 				if (auto ply = pUser->mCOMObject->Find<IEngine>()) {
@@ -1269,6 +1294,7 @@ namespace Powerups {
 					aCatchupCheatCars.push_back(pUser);
 					aForceNOSCars.push_back(pUser);
 				}
+#endif
 			}
 			if (fElectroTime > 0.0) {
 				if (!electro) electro = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/electro.wav");
@@ -1721,6 +1747,9 @@ namespace Powerups {
 
 			bool canPlayerPowerup = true;
 			if (SM64::bEnabled) canPlayerPowerup = false;
+#ifdef CWOEECHAOS
+			if (CustomPhysicsBall::bEnabled) canPlayerPowerup = false;
+#endif
 
 			auto cars = GetActiveVehicles();
 			for (auto& car : cars) {
@@ -1833,8 +1862,10 @@ namespace Powerups {
 	}
 
 	void OnTick() {
+#ifndef CWOEECHAOS
 		aCatchupCheatCars.clear();
 		aForceNOSCars.clear();
+#endif
 
 		while (DespawnCleanup()) {}
 
@@ -1886,6 +1917,7 @@ namespace Powerups {
 		}
 	}
 
+#ifndef CWOEECHAOS
 	void CleanupOldPowerups() {
 		for (auto& obj : Render3DObjects::aObjects) {
 			if (!obj->IsActive()) continue;
@@ -2009,12 +2041,16 @@ namespace Powerups {
 			gTimer.fTotalTime -= heliInterval;
 		}
 	}
+#endif
 
 	ChloeHook Init([](){
 		aDrawingLoopFunctions.push_back(OnTick);
+		aDrawing3DLoopFunctions.push_back(OnTick3D);
+
+#ifndef CWOEECHAOS
 		aDrawingLoopFunctions.push_back(PowerupMod_OnTick);
 		aDrawingLoopFunctions.push_back(PowerupMod_Heli_OnTick);
-		aDrawing3DLoopFunctions.push_back(OnTick3D);
 		NyaHookLib::Patch<uint16_t>(0x6B1A02, 0x9090); // disable player causality check for cop flipping
+#endif
 	});
 }
