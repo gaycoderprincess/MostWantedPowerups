@@ -595,6 +595,7 @@ namespace Powerups {
 		POWERUP_BEACHBALL,
 		POWERUP_MARIO,
 		POWERUP_OILDRUM,
+		POWERUP_MAGNET,
 		NUM_POWERUPS
 	};
 	const char* aPowerupNames[] = {
@@ -615,6 +616,7 @@ namespace Powerups {
 		"BEACHBALL",
 		"MARIO",
 		"OILDRUM",
+		"MAGNET",
 	};
 
 	const char* aPowerupSpriteNames1[] = {
@@ -635,6 +637,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/powerup_beachballpack.png",
 			"CwoeePowerups/data/textures/powerup_mario.png",
 			"CwoeePowerups/data/textures/powerup_oildrum.png",
+			"CwoeePowerups/data/textures/powerup_magnet.png",
 	};
 	const char* aPowerupSpriteNames2[] = {
 			//"CwoeePowerups/data/textures/revolt_1.png",
@@ -654,6 +657,7 @@ namespace Powerups {
 			"CwoeePowerups/data/textures/powerup_beachballpack.png",
 			"CwoeePowerups/data/textures/powerup_mario.png",
 			"CwoeePowerups/data/textures/powerup_oildrum.png",
+			"CwoeePowerups/data/textures/powerup_magnet.png",
 	};
 	IDirect3DTexture9* aPowerupTextures1[NUM_POWERUPS] = {};
 	IDirect3DTexture9* aPowerupTextures2[NUM_POWERUPS] = {};
@@ -693,6 +697,8 @@ namespace Powerups {
 		double fTimeSinceLastFire = 0.0;
 		double fElectroTime = 0.0;
 		double fTurboTime = 0.0;
+		double fMagnetTime = 0.0;
+		IVehicle* pMagnetTarget = nullptr;
 		double aTimeSinceRolled[NUM_POWERUPS] = {};
 
 		// audio
@@ -733,6 +739,13 @@ namespace Powerups {
 
 					if (!balldrop) balldrop = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/balldrop.wav");
 					PlayAudioFromCar(balldrop, pUser);
+					return true;
+				} break;
+				case POWERUP_MAGNET: {
+					if (auto target = ReVoltFirework::PickTarget(pUser)) {
+						fMagnetTime = 10.0;
+						pMagnetTarget = target;
+					}
 					return true;
 				} break;
 				case POWERUP_TURBO:
@@ -826,6 +839,7 @@ namespace Powerups {
 			switch (PowerupID) {
 				case POWERUP_PUTTYBOMB:
 					return ExecutePowerup();
+				case POWERUP_MAGNET:
 				case POWERUP_FIREWORK:
 				case POWERUP_FIREWORKPACK: {
 					auto target = ReVoltFirework::PickTarget(pUser);
@@ -1058,6 +1072,26 @@ namespace Powerups {
 			return bMK64Style ? texBase2 : texBase1;
 		}
 
+		bool PowerupHasCrosshair() {
+			if (PowerupID == POWERUP_FIREWORK) return true;
+			if (PowerupID == POWERUP_FIREWORKPACK) return true;
+			if (PowerupID == POWERUP_MAGNET) return true;
+			return false;
+		}
+
+		bool PowerupHasFireHint() {
+			if (PowerupID == POWERUP_FIREWORK) return true;
+			if (PowerupID == POWERUP_FIREWORKPACK) return true;
+			if (PowerupID == POWERUP_BEACHBALL) return true;
+			if (PowerupID == POWERUP_MAGNET) return true;
+			return false;
+		}
+
+		bool PowerupHasCrosshairBehind() {
+			if (PowerupID == POWERUP_MAGNET) return true;
+			return false;
+		}
+
 		void Render() {
 			if (auto texBase = GetBaseTexture()) {
 				DrawRectangle(0.5 - (fSpriteSize * GetAspectRatioInv()), 0.5 + (fSpriteSize * GetAspectRatioInv()), fSpriteY - fSpriteSize, fSpriteY + fSpriteSize, {255,255,255,255}, 0, texBase);
@@ -1066,11 +1100,13 @@ namespace Powerups {
 			int powerupId = GetPowerupWithRoll();
 			uint8_t powerupAlpha = GetPowerupAlpha();
 			if (fRollTime <= 0) {
-				if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK) {
+				if (PowerupHasFireHint()) {
 					static bool bOnce = true;
 					if (bOnce) {
-						CwoeeHints::AddHint("Press X to fire a rocket.");
-						CwoeeHints::AddHint("The green reticule displays your lock-on target.");
+						CwoeeHints::AddHint("Press X to fire.");
+						if (PowerupHasCrosshair()) {
+							CwoeeHints::AddHint("The green reticule displays your lock-on target.");
+						}
 						bOnce = false;
 					}
 				}
@@ -1089,7 +1125,7 @@ namespace Powerups {
 				return IsKeyJustPressed('X') || IsPadKeyJustPressed(NYA_PAD_KEY_X);
 			}
 
-			if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL) {
+			if (PowerupID == POWERUP_FIREWORK || PowerupID == POWERUP_FIREWORKPACK || PowerupID == POWERUP_BEACHBALL || PowerupID == POWERUP_MAGNET) {
 				if (fTimeSinceLastFire < 0.5) return false;
 				auto target = ReVoltFirework::PickTargetAI(pUser);
 				if (target && pUser->GetDriverClass() == DRIVER_COP) {
@@ -1202,6 +1238,41 @@ namespace Powerups {
 					NyaAudio::Stop(electrozap);
 				}
 			}
+
+			if (fMagnetTime > 0.0) {
+				auto veh = pMagnetTarget;
+				if (!IsVehicleValidAndActive(veh)) {
+					fMagnetTime = 0.0;
+					pMagnetTarget = nullptr;
+					return;
+				}
+
+				float force = 25.0;
+
+				auto v = veh->GetPosition();
+
+				auto objs = GetActiveSharedRigidBodies();
+				for (auto& obj : objs) {
+					if (obj.IsVehicle()) continue;
+					//if (obj.bIsBall) continue;
+
+					auto c = obj.GetPosition();
+					if ((*v - c).length() > 200) continue;
+					obj.WakeObject();
+
+					auto vel = obj.GetLinearVelocity();
+					vel.x += (v->x - c.x) * force * delta;
+					vel.y += (v->y - c.y) * force * delta;
+					vel.z += (v->z - c.z) * force * delta;
+					obj.SetLinearVelocity(vel);
+
+					if (obj.pCustomObject) {
+						obj.pCustomObject->fTimeSinceMovedByScript = 0.0;
+					}
+				}
+
+				fMagnetTime -= delta;
+			}
 		}
 
 		void Process(double delta) {
@@ -1299,13 +1370,13 @@ namespace Powerups {
 			}
 		}
 
-		void RenderOverhead(IDirect3DTexture9* tex, float scaleX, float scaleY, float zOffset) {
+		static void RenderOverhead(IVehicle* veh, IDirect3DTexture9* tex, float scaleX, float scaleY, float yOffset, float zOffset) {
 			static auto models = Render3D::CreateModels("plane2d.fbx");
 
 			Render3D::RendererConfig.pOverrideDiffuse = tex;
 			Render3D::RendererConfig.bForceNoCulling = true;
 
-			if (auto rb = pUser->mCOMObject->Find<ICollisionBody>()) {
+			if (auto rb = veh->mCOMObject->Find<ICollisionBody>()) {
 				UMath::Vector3 dim;
 				rb->GetDimension(&dim);
 
@@ -1318,6 +1389,7 @@ namespace Powerups {
 				mat.x *= scaleX;
 				mat.z *= scaleY;
 
+				mat.p += mat.y * yOffset;
 				mat.p += mat.z * zOffset;
 
 				for (auto& mdl : models) {
@@ -1332,12 +1404,17 @@ namespace Powerups {
 		void Process3D() {
 			if (!bIsLocalPlayer && bOverheadDisplay) {
 				if (auto tex = GetPowerupTexture(GetPowerupWithRoll())) {
-					RenderOverhead(GetBaseTexture(), 1.0, 1.0, 0.0);
+					RenderOverhead(pUser, GetBaseTexture(), 1.0, 1.0, 0.0, 0.0);
 					if (GetPowerupAlpha() > 64) {
-						RenderOverhead(tex, -1.0, 1.0, 0.05); // viewing from front
-						RenderOverhead(tex, 1.0, 1.0, -0.05); // viewing from behind
+						RenderOverhead(pUser, tex, -1.0, 1.0, 0.0, 0.05); // viewing from front
+						RenderOverhead(pUser, tex, 1.0, 1.0, 0.0, -0.05); // viewing from behind
 					}
 				}
+			}
+
+			static auto magnet = LoadTexture_SetDir("CwoeePowerups/data/textures/powerup_magnet_overhead.png");
+			if (magnet && fMagnetTime > 0.0 && IsVehicleValidAndActive(pMagnetTarget)) {
+				RenderOverhead(pMagnetTarget, magnet, 1.0, 1.0, 0.5, 0.1);
 			}
 
 			if (fElectroTime > 0.0) {
@@ -1380,6 +1457,8 @@ namespace Powerups {
 			fTimeSinceLastFire = 0.0;
 			fElectroTime = 0.0;
 			fTurboTime = 0.0;
+			fMagnetTime = 0.0;
+			pMagnetTarget = nullptr;
 		}
 
 		void StopSounds() {
