@@ -1,6 +1,6 @@
 # Most Wanted Powerups
 
-A mod for Need for Speed: Most Wanted that gives you powerups from Mario Kart, Re-Volt and others
+A mod for Need for Speed: Most Wanted that gives you powerups from Mario Kart, Re-Volt, Blur and others
 
 <img width="1042" height="671" alt="powerups_thumb" src="https://github.com/user-attachments/assets/3eb7e043-4de5-4a32-bd49-4d13ef48145b" />
 

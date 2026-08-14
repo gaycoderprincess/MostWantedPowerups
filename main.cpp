@@ -129,6 +129,14 @@ void ChaosLoop() {
 void DebugMenu() {
 	ChloeMenuLib::BeginMenu();
 
+#ifndef CWOEE_NO_UPDATER
+	if (UpdateChecker::bUpdateAvailable) {
+		if (DrawMenuOption("Update available!") || DrawMenuOption("Click here to update")) {
+			UpdateChecker::OpenUpdatePage();
+		}
+	}
+#endif
+
 	QuickValueEditor("bDebugPrintsEnabled", bDebugPrintsEnabled);
 	QuickValueEditor("Overhead Display", Powerups::bOverheadDisplay);
 	QuickValueEditor("Powerups Style", Powerups::bMK64Style, "Re-Volt", "Mario Kart 64");

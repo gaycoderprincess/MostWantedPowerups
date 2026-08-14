@@ -577,7 +577,7 @@ namespace Powerups {
 			NyaVec3 pos = ply;
 			pos -= fwd * 5;
 			pos.y += 2;
-			SpawnObject<false>(pos, vel);
+			SpawnObject<false>(pos, vel * 0.9);
 		}
 	}
 
@@ -1791,6 +1791,8 @@ namespace Powerups {
 
 				if (bLightSpawnMode) {
 					UMath::Matrix4 objMat;
+					objMat.p = center;
+					SpawnObject<false>(objMat);
 					objMat.p = center - lookat.x * (pos.w * 0.33);
 					SpawnObject<false>(objMat);
 					objMat.p = center + lookat.x * (pos.w * 0.33);
@@ -1957,6 +1959,7 @@ namespace Powerups {
 				float copPowerupInterval = 10.0;
 				if (heatLevel < 2.0) copPowerupInterval = 15.0;
 				if (heatLevel >= 5.0) copPowerupInterval = 6.0;
+				if (heatLevel >= 6.0) copPowerupInterval = 4.0;
 
 				fPursuitCopPowerupTimer += gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed;
 				if (fPursuitCopPowerupTimer > copPowerupInterval) {
@@ -1989,16 +1992,21 @@ namespace Powerups {
 	void PowerupMod_Heli_OnTick() {
 		if (!IsInFocusedPursuit()) return;
 
+		float heatLevel = GetLocalPlayerInterface<IPerpetrator>()->GetHeat();
+
+		float heliInterval = 10.0;
+		if (heatLevel >= 6.0) heliInterval = 7.0;
+
 		static CNyaTimer gTimer;
 		gTimer.Process();
-		if (gTimer.fTotalTime >= 10.0) {
+		if (gTimer.fTotalTime >= heliInterval) {
 			auto cars = GetActiveVehicles(DRIVER_COP);
 			for (auto& veh : cars) {
 				if (!strcmp(veh->GetVehicleName(), "copheli")) {
 					OilDrum::SpawnBarrelFromCar(veh);
 				}
 			}
-			gTimer.fTotalTime -= 10.0;
+			gTimer.fTotalTime -= heliInterval;
 		}
 	}
 
