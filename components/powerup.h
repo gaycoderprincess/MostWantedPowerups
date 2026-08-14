@@ -706,6 +706,7 @@ namespace Powerups {
 		double fElectroTime = 0.0;
 		double fTurboTime = 0.0;
 		double fMagnetTime = 0.0;
+		double fBargeTime = 0.0;
 		IVehicle* pMagnetTarget = nullptr;
 		double aTimeSinceRolled[NUM_POWERUPS] = {};
 
@@ -718,6 +719,8 @@ namespace Powerups {
 		NyaAudio::NyaSound mushroom = 0;
 		NyaAudio::NyaSound starmusic = 0;
 		NyaAudio::NyaSound barge = 0;
+
+		static inline float gBargeRange = 25.0;
 
 		bool ExecutePowerup() {
 			switch (PowerupID) {
@@ -762,10 +765,11 @@ namespace Powerups {
 					return true;
 				} break;
 				case POWERUP_BARGE: {
+					fBargeTime = 0.33;
+
 					if (!barge) barge = LoadAudioFile_SetDir("CwoeePowerups/data/sound/effect/barge.mp3");
 					PlayAudioFromCar(barge, pUser, true);
 
-					float attackRange = 25;
 					float attackPower = 50;
 					float attackPowerAng = 25;
 
@@ -774,14 +778,14 @@ namespace Powerups {
 					auto cars = GetActiveSharedRigidBodies();
 					if (SM64::bEnemyEnabled) {
 						auto dist = (SM64::GetMarioWorldPos() - userPos).length();
-						if (dist < attackRange) {
+						if (dist < gBargeRange) {
 							SM64::OnTakeDamage(1, userPos, true);
 						}
 					}
 					for (auto& car : cars) {
 						auto pos = car.GetPosition();
 						auto dist = (pos - userPos).length();
-						if (dist < attackRange) {
+						if (dist < gBargeRange) {
 							auto dir = (pos - userPos);
 							dir.Normalize();
 
@@ -1307,7 +1311,9 @@ namespace Powerups {
 					NyaAudio::Stop(electrozap);
 				}
 			}
-
+			if (fBargeTime > 0.0) {
+				fBargeTime -= delta;
+			}
 			if (fMagnetTime > 0.0) {
 				auto veh = pMagnetTarget;
 				if (!IsVehicleValidAndActive(veh)) {
@@ -1470,6 +1476,31 @@ namespace Powerups {
 			Render3D::RendererConfig.bForceNoCulling = false;
 		}
 
+		static void RenderOnGround(UMath::Vector3 pos, IDirect3DTexture9* tex, float scaleX, float scaleY, float yOffset) {
+			static auto models = Render3D::CreateModels("plane2d.fbx");
+
+			GetWorldHeightAtPoint_WithCustom(&pos, &pos.y, nullptr);
+
+			Render3D::RendererConfig.pOverrideDiffuse = tex;
+			Render3D::RendererConfig.bForceNoCulling = true;
+
+			NyaMat4x4 mat;
+			mat.Rotate(NyaVec3(90 * 0.01745329, 0, 0));
+			mat.p = pos;
+
+			mat.x *= scaleX;
+			mat.y *= scaleY;
+
+			mat.p.y += yOffset;
+
+			for (auto& mdl : models) {
+				mdl->RenderAt(WorldToRenderMatrix(mat), true);
+			}
+
+			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
+			Render3D::RendererConfig.bForceNoCulling = false;
+		}
+
 		void Process3D() {
 			if (!bIsLocalPlayer && bOverheadDisplay) {
 				if (auto tex = GetPowerupTexture(GetPowerupWithRoll())) {
@@ -1484,6 +1515,17 @@ namespace Powerups {
 			static auto magnet = LoadTexture_SetDir("CwoeePowerups/data/textures/powerup_magnet_overhead.png");
 			if (magnet && fMagnetTime > 0.0 && IsVehicleValidAndActive(pMagnetTarget)) {
 				RenderOverhead(pMagnetTarget, magnet, 1.0, 1.0, 0.5, -0.1);
+			}
+
+			static auto barge = LoadTexture_SetDir("CwoeePowerups/data/textures/barge_2d.png");
+			if (barge && fBargeTime > 0.0) {
+				float scale = (0.33 - fBargeTime) * 3;
+				if (scale > 0.33) {
+					scale = easeInOutQuart(scale);
+				}
+				Render3D::RendererConfig.bForceNoEffect = true;
+				RenderOnGround(*pUser->GetPosition(), barge, scale * gBargeRange, scale * gBargeRange, 0.2);
+				Render3D::RendererConfig.bForceNoEffect = false;
 			}
 
 			if (fElectroTime > 0.0) {
