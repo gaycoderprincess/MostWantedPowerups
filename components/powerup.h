@@ -720,7 +720,15 @@ namespace Powerups {
 		NyaAudio::NyaSound starmusic = 0;
 		NyaAudio::NyaSound barge = 0;
 
-		static inline float gBargeRange = 25.0;
+		static inline float gBargeRange = 30.0;
+
+		bool IsCarTargetable(IVehicle* target) {
+			if (auto rb = target->mCOMObject->Find<IRBVehicle>()) {
+				if (rb->GetInvulnerability() != INVULNERABLE_NONE) return false;
+			}
+			if (pUser->GetDriverClass() == DRIVER_COP && target->GetDriverClass() == DRIVER_COP) return false;
+			return true;
+		}
 
 		bool ExecutePowerup() {
 			switch (PowerupID) {
@@ -792,9 +800,7 @@ namespace Powerups {
 							auto iveh = car.GetVehicle();
 							if (iveh) {
 								if (iveh == pUser) continue;
-								if (auto rb = iveh->mCOMObject->Find<IRBVehicle>()) {
-									if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
-								}
+								if (!IsCarTargetable(iveh)) continue;
 							}
 
 							car.WakeObject();
@@ -875,10 +881,7 @@ namespace Powerups {
 					for (auto& car : cars) {
 						if (car == pUser) continue;
 						if (IsCarDestroyed(car)) continue;
-						if (pUser->GetDriverClass() == DRIVER_COP && car->GetDriverClass() == DRIVER_COP) continue;
-						if (auto rb = car->mCOMObject->Find<IRBVehicle>()) {
-							if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
-						}
+						if (!IsCarTargetable(car)) continue;
 						ReVoltBomb::ExplodeCar(car, false);
 					}
 					return true;
@@ -1232,11 +1235,8 @@ namespace Powerups {
 			auto cars = GetActiveVehicles();
 			for (auto& car : cars) {
 				if (car == pUser) continue;
-				if (pUser->GetDriverClass() == DRIVER_COP && car->GetDriverClass() == DRIVER_COP) continue;
+				if (!IsCarTargetable(car)) continue;
 				//if (IsCarDestroyed(car)) continue;
-				if (auto rb = car->mCOMObject->Find<IRBVehicle>()) {
-					if (rb->GetInvulnerability() != INVULNERABLE_NONE) continue;
-				}
 
 				auto dist = (plyPos - *car->GetPosition()).length();
 				if (dist < 15) {
@@ -1450,6 +1450,7 @@ namespace Powerups {
 
 			Render3D::RendererConfig.pOverrideDiffuse = tex;
 			Render3D::RendererConfig.bForceNoCulling = true;
+			Render3D::RendererConfig.bForceNoEffect = true;
 
 			if (auto rb = veh->mCOMObject->Find<ICollisionBody>()) {
 				UMath::Vector3 dim;
@@ -1474,6 +1475,7 @@ namespace Powerups {
 
 			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
 			Render3D::RendererConfig.bForceNoCulling = false;
+			Render3D::RendererConfig.bForceNoEffect = false;
 		}
 
 		static void RenderOnGround(UMath::Vector3 pos, IDirect3DTexture9* tex, float scaleX, float scaleY, float yOffset) {
@@ -1483,6 +1485,7 @@ namespace Powerups {
 
 			Render3D::RendererConfig.pOverrideDiffuse = tex;
 			Render3D::RendererConfig.bForceNoCulling = true;
+			Render3D::RendererConfig.bForceNoEffect = true;
 
 			NyaMat4x4 mat;
 			mat.Rotate(NyaVec3(90 * 0.01745329, 0, 0));
@@ -1499,6 +1502,7 @@ namespace Powerups {
 
 			Render3D::RendererConfig.pOverrideDiffuse = nullptr;
 			Render3D::RendererConfig.bForceNoCulling = false;
+			Render3D::RendererConfig.bForceNoEffect = false;
 		}
 
 		void Process3D() {
@@ -1523,9 +1527,7 @@ namespace Powerups {
 				if (scale > 0.33) {
 					scale = easeInOutQuart(scale);
 				}
-				Render3D::RendererConfig.bForceNoEffect = true;
 				RenderOnGround(*pUser->GetPosition(), barge, scale * gBargeRange, scale * gBargeRange, 0.2);
-				Render3D::RendererConfig.bForceNoEffect = false;
 			}
 
 			if (fElectroTime > 0.0) {
@@ -1912,6 +1914,10 @@ namespace Powerups {
 				CleanupOldPowerups();
 				SM64::bEnemyEnabled = false;
 				bShouldSpawnPowerups = true;
+
+				if (!NyaAudio::IsFinishedPlaying(gPickupSound)) {
+					NyaAudio::Stop(gPickupSound);
+				}
 
 				for (auto& state : aPowerupStates) {
 					if (!state.IsValid()) continue;
