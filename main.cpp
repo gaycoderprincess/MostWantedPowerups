@@ -189,6 +189,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 				Powerups::bOverheadDisplay = config["show_overhead"].value_or(Powerups::bOverheadDisplay);
 			}
 
+			UpdateChecker::CheckForUpdates();
 			ChloeMenuLib::RegisterMenu("Cwoee Powerups", &DebugMenu);
 
 			NyaHooks::PlaceD3DHooks(true);
