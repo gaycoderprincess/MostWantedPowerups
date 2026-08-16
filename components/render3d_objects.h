@@ -239,10 +239,13 @@ namespace Render3DObjects {
 		bool bNoBackfaceCulling = false;
 		bool bNoShadowCasting = false;
 		bool bNoEnvmap = false;
+		IDirect3DTexture9* pOverrideDiffuse = nullptr;
+		std::string sOverrideDiffuse_TextureName;
 		std::string sDebugName;
 
 		float fHealth = 100.0;
 
+		bool bForceUpdateCollisions = false;
 		NyaVec3 vLastBarrierPosition = UMath::Vector3::kZero;
 		NyaVec3 vLastTriPosition = UMath::Vector3::kZero;
 		std::vector<CustomBarrier> Barriers = {};
@@ -321,7 +324,7 @@ namespace Render3DObjects {
 			if (!bTriCollidable) return;
 
 			auto currPos = vColPosition;
-			if (currPos.x == vLastTriPosition.x && currPos.y == vLastTriPosition.y && currPos.z == vLastTriPosition.z) return;
+			if (!bForceUpdateCollisions && currPos.x == vLastTriPosition.x && currPos.y == vLastTriPosition.y && currPos.z == vLastTriPosition.z) return;
 			vLastTriPosition = currPos;
 
 			std::vector<WCollisionTri> tris;
@@ -362,7 +365,7 @@ namespace Render3DObjects {
 
 		void RegenerateTriBarriers() {
 			if (!bTriCollidable) return;
-			if (vColPosition.x == vLastBarrierPosition.x && vColPosition.y == vLastBarrierPosition.y && vColPosition.z == vLastBarrierPosition.z) return;
+			if (!bForceUpdateCollisions && vColPosition.x == vLastBarrierPosition.x && vColPosition.y == vLastBarrierPosition.y && vColPosition.z == vLastBarrierPosition.z) return;
 			vLastBarrierPosition = vColPosition;
 
 			Barriers.clear();
@@ -443,7 +446,7 @@ namespace Render3DObjects {
 		void RegenerateBarriers() {
 			if (bTriCollidable) return;
 			if (fColSize <= 0) return;
-			if (vColPosition.x == vLastBarrierPosition.x && vColPosition.y == vLastBarrierPosition.y && vColPosition.z == vLastBarrierPosition.z) return;
+			if (!bForceUpdateCollisions && vColPosition.x == vLastBarrierPosition.x && vColPosition.y == vLastBarrierPosition.y && vColPosition.z == vLastBarrierPosition.z) return;
 			vLastBarrierPosition = vColPosition;
 
 			// points:
@@ -511,10 +514,18 @@ namespace Render3DObjects {
 
 		void Render() {
 			if (bNoBackfaceCulling) { Render3D::RendererConfig.bForceNoCulling = true; }
+			if (pOverrideDiffuse) {
+				Render3D::RendererConfig.pOverrideDiffuse = pOverrideDiffuse;
+				Render3D::RendererConfig.sOverrideDiffuse_TextureName = sOverrideDiffuse_TextureName;
+			}
 			for (auto& model : aModels) {
 				model->RenderAt(WorldToRenderMatrix(mMatrix), bUseAlpha);
 			}
 			if (bNoBackfaceCulling) { Render3D::RendererConfig.bForceNoCulling = false; }
+			if (pOverrideDiffuse) {
+				Render3D::RendererConfig.pOverrideDiffuse = nullptr;
+				Render3D::RendererConfig.sOverrideDiffuse_TextureName.clear();
+			}
 		}
 
 		void Destroy(bool deleteModels) {
@@ -564,6 +575,7 @@ namespace Render3DObjects {
 			obj->RegenerateBarriers();
 			obj->RegenerateTris();
 			obj->RegenerateTriBarriers();
+			obj->bForceUpdateCollisions = false;
 			if (obj->pTickFunction) {
 				obj->pTickFunction(obj, gTimer.fDeltaTime * Sim::Internal::mSystem->mSpeed);
 			}
