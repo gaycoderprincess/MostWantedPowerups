@@ -9,6 +9,7 @@
 #include "nya_dx9_hookbase.h"
 #include "nya_commonhooklib.h"
 #include "nya_commonmath.h"
+#include "nya_updatecheck.h"
 #include "nfsmw.h"
 
 #include "include/chloemenulib.h"
@@ -45,7 +46,6 @@ std::vector<void(*)()> aPlayerDestroyFunctions;
 #include "components/customphysics_objects.h"
 #include "components/sm64.h"
 #include "components/powerup.h"
-#include "components/updatecheck.h"
 
 void MainLoop() {
 	PerformanceBenchmarker _perf("MainLoop");
@@ -102,6 +102,16 @@ void Render3DLoopShadows() {
 }
 
 void ChaosLoop() {
+	if (UpdateChecker::bUpdateChecked) {
+		if (UpdateChecker::bUpdateAvailable) {
+			CwoeeHints::AddHint(std::format("Update available! {} -> {}", CWOEECHAOS_VERSION, UpdateChecker::sUpdateVersion), 60);
+		}
+		else {
+			CwoeeHints::AddHint("Mod is up to date!");
+		}
+		UpdateChecker::bUpdateChecked = false;
+	}
+
 	PerformanceBenchmarker _perf("ChaosLoop");
 
 	static bool bOnce = true;

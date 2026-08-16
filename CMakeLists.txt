@@ -25,7 +25,7 @@ else()
     endif()
 endif()
 
-add_compile_definitions(BOX3D_DOUBLE_PRECISION IMGUI_USER_CONFIG="../../nya_imconfig.h" CWOEECHAOS_VERSION="1.25" NYA_BACKEND_DX9 NYA_AUDIO_BASS NYA_FONTNAME="MenuStyles/MenuStyleBubbly/FranxurterTotallyMedium-gxwjp.ttf" NYA_FONTSIZE=32.0)
+add_compile_definitions(BOX3D_DOUBLE_PRECISION IMGUI_USER_CONFIG="../../nya_imconfig.h" CWOEECHAOS_VERSION="1.25" CWOEE_UPDATER_CODEBERG CWOEE_UPDATER_PROJECT="MostWantedPowerups" NYA_BACKEND_DX9 NYA_AUDIO_BASS NYA_FONTNAME="MenuStyles/MenuStyleBubbly/FranxurterTotallyMedium-gxwjp.ttf" NYA_FONTSIZE=32.0)
 add_library(NFSMWPowerups SHARED
         ../nya-common/3rdparty/imgui/imgui.cpp
         ../nya-common/3rdparty/imgui/backends/imgui_impl_dx9.cpp
@@ -36,6 +36,7 @@ add_library(NFSMWPowerups SHARED
         ../nya-common/nya_commondraw.cpp
         ../nya-common/nya_commontimer.cpp
         ../nya-common/nya_commonaudio.cpp
+        ../nya-common/nya_updatecheck.cpp
         ../nya-common/nya_dx9_hookbase.cpp
         main.cpp)
 target_include_directories(NFSMWPowerups PUBLIC ../nya-common)
